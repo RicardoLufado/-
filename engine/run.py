@@ -221,7 +221,10 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
         row["spot_price"], row["spot_time"] = (q["price"], q.get("time")) if q else (None, None)
         ref = row["spot_price"] or row["last_close"]
         row["ref_price"] = c.round_tick(ref) if ref else None
-        row["ref_source"] = "盘中最新价" if row["spot_price"] else ("最近收盘价" if ref else "数据缺失")
+        if row["spot_price"]:
+            row["ref_source"] = f"新浪实时行情（{row['spot_time']}）" if row["spot_time"] else "新浪实时行情"
+        else:
+            row["ref_source"] = "最近收盘价" if ref else "数据缺失"
         row["margin_per_lot"] = c.margin_per_lot(row["ref_price"]) if row["ref_price"] else None
         row["tradable"] = bool(k is not None and sc_final.tradable[k])
         if c.kind == "equity" and row["F0"] and row["S0"]:
