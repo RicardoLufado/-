@@ -61,21 +61,7 @@ jobs:
 
       - name: 结果摘要
         if: always()
-        run: |
-          python - <<'EOF'
-          import json, pathlib
-          p = pathlib.Path("site/data/latest.json")
-          if not p.exists():
-              print("没有 latest.json"); raise SystemExit(0)
-          d = json.loads(p.read_text(encoding="utf-8"))
-          print("generated_at:", d.get("generated_at"), "| data_asof:", d.get("data_asof"), "| status:", d.get("status"))
-          for s in d.get("data_sources", []):
-              print(f"  {s['status']:>9} | {s['name']} | {s.get('rows')} 行 | {s.get('first_date')} ~ {s.get('last_date')}")
-          for m in d.get("modes", []):
-              print(f"  {m['id']:>5} | {m['summary']} | 晋级概率 {m['metrics']['promotion_prob']:.2%}")
-          for w in d.get("warnings", []):
-              print("  [警告]", w)
-          EOF
+        run: python scripts/summarize.py
 
       - name: 保存数据缓存
         if: always()

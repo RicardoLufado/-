@@ -20,10 +20,11 @@ from tests.helpers import make_scenario
 
 def test_season_calendar_counts():
     cal = weekday_calendar(date(2026, 9, 1), date(2026, 12, 31))
-    assert date(2026, 10, 8) not in cal and date(2026, 10, 9) in cal
-    assert count_trading_days_after(cal, date(2026, 9, 30), date(2026, 11, 20)) == 31   # 10-09 起约 31 天
-    assert count_trading_days_after(cal, date(2026, 9, 30), date(2026, 12, 18)) == 51
+    assert date(2026, 10, 7) not in cal and date(2026, 10, 8) in cal and date(2026, 9, 25) not in cal
+    assert count_trading_days_after(cal, date(2026, 10, 8), date(2026, 11, 20)) == 31   # 10-09 起约 31 天
+    assert count_trading_days_after(cal, date(2026, 10, 8), date(2026, 12, 18)) == 51
     assert count_trading_days_after(cal, date(2026, 9, 10), date(2026, 9, 18)) == 6     # 9-18 是第 7 个交易日
+    assert count_trading_days_after(cal, date(2026, 9, 10), date(2026, 9, 30)) == 13    # 9-30 是第 14 个交易日
 
 
 def test_calendar_extension_warns():
@@ -98,7 +99,7 @@ def test_latest_json_fields(synthetic_result, tmp_path):
     out, cache = tmp_path / "site", tmp_path / "cache"
     write_outputs(r, out, cache, now)
     data = json.loads((out / "latest.json").read_text(encoding="utf-8"))   # 严格 JSON（无 NaN）
-    assert data["data_asof"] == "2026-09-30"
+    assert data["data_asof"] == "2026-10-08"
     assert (out / "history" / "20261009_0845.json").exists()
     assert json.loads((out / "history" / "index.json").read_text()) == ["20261009_0845.json"]
     assert (cache / "last_good" / "latest.json").exists()

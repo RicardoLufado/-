@@ -22,7 +22,7 @@ SYN = {
 }
 
 
-def synthetic_market_data(spec: ContractSpec, end: date = date(2026, 9, 30), seed: int = 7,
+def synthetic_market_data(spec: ContractSpec, end: date = date(2026, 10, 8), seed: int = 7,
                           start: date = date(2023, 5, 4)) -> MarketData:
     rng = np.random.default_rng(seed)
     calendar = weekday_calendar(date(2023, 1, 2), date(2026, 12, 31))
