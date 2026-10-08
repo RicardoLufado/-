@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+engine.log
+
+# 由 GitHub Actions 生成，不进仓库
+data/cache/
+site/data/latest.json
+site/data/history/

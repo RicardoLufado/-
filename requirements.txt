@@ -1,0 +1,6 @@
+akshare>=1.19
+pandas
+numpy
+scipy
+pyyaml
+pytest

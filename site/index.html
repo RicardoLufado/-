@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>持仓建议 · 中金所杯</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main id="app">
+  <header class="top">
+    <h1>中金所杯 · 一键持仓建议</h1>
+    <div id="banners"></div>
+    <div class="card summary" id="summary"><p class="muted">正在读取 latest.json…</p></div>
+  </header>
+
+  <section id="warnings-sec" hidden>
+    <details class="card warn" open>
+      <summary>注意事项 <span id="warn-count" class="pill bad"></span></summary>
+      <ul id="warnings"></ul>
+    </details>
+  </section>
+
+  <section>
+    <h2>推荐持仓 <span id="rec-mode" class="muted small"></span></h2>
+    <div class="card" id="positions"></div>
+  </section>
+
+  <section>
+    <h2>下单指令 <span class="muted small">相对 account.json 当前持仓</span></h2>
+    <div class="card" id="orders"></div>
+  </section>
+
+  <section>
+    <h2>方案对比</h2>
+    <div class="card scroll-x" id="compare"></div>
+  </section>
+
+  <section>
+    <h2>期末总金额分布 <span class="muted small">11-20 收盘，模型估计</span></h2>
+    <div class="card">
+      <div class="tabs" id="hist-tabs" role="tablist"></div>
+      <div id="hist"></div>
+      <p class="muted small" id="hist-note"></p>
+    </div>
+  </section>
+
+  <section>
+    <h2>为什么这样建议</h2>
+    <div class="card"><ol id="explain"></ol></div>
+  </section>
+
+  <section class="buttons">
+    <button id="reload" type="button">重新加载</button>
+    <a id="gh" class="btn secondary" href="https://github.com/RicardoLufado/-/actions/workflows/recommend.yml" target="_blank" rel="noopener">去 GitHub 重新计算</a>
+    <p class="muted small">「去 GitHub 重新计算」打开 Actions 的 recommend 页面，点 Run workflow → Run workflow，约 3–5 分钟后回来点「重新加载」。</p>
+  </section>
+
+  <section>
+    <details class="card">
+      <summary>局限</summary>
+      <ul id="limits"></ul>
+    </details>
+    <details class="card">
+      <summary>数据来源</summary>
+      <div class="scroll-x" id="sources"></div>
+    </details>
+    <details class="card">
+      <summary>合约参数与行情</summary>
+      <div class="scroll-x" id="contracts"></div>
+    </details>
+    <details class="card">
+      <summary>方法说明</summary>
+      <div id="method" class="small">
+        <p>这是<strong>排名制锦标赛</strong>：只有前 3000 名晋级，回报是凸的。所以目标函数取「晋级概率」，而不是收益或夏普比率。</p>
+        <p><strong>模式 A</strong>：最大化 P(期末总金额 ≥ τ)，τ 在晋级线区间内均匀分布，等价于最大化 mean(clip((W − 下沿) ÷ (上沿 − 下沿), 0, 1))。
+        Browne (1999)《Reaching goals by a deadline》：目标是在截止日前达到某个水平时，最优策略是落后时加大风险、领先时锁定。系统每次运行都会根据当前权益和剩余天数重新优化，这个行为会自然出现。</p>
+        <p><strong>模式 D</strong>：同样的整数枚举，最小化期末总金额的方差。</p>
+        <p><strong>情景</strong>：2023-05 以来 8 个序列（股指用指数、国债用新浪主连）的对数收益，EWMA（λ=0.94）标准化并去均值（零漂移，不预测涨跌），按日期整行做块长 5 的块自助法，路径上的波动率按 EWMA 递推。股指 2612 价格 = 指数 × (1 + 当前基差 × 剩余交易日 ÷ 当前剩余交易日)，即基差线性收敛；国债 2612 按主连收益滚动。</p>
+        <p><strong>爆仓 / 穿仓</strong>：每天收盘若权益 &lt; 保证金 × liq_ratio，当天按收盘价全部平仓、此后权益冻结；若此时权益 &lt; 0 记为穿仓，负权益保留。</p>
+        <p><strong>搜索</strong>：最多两个股指品种（各 −3 到 +3 手）× 最多一个国债品种（保证金上限内约 15 个等距手数），开仓保证金 ≤ 70% 期货权益；2,000 条路径初筛 → 前 30 名换 10,000 条路径复评 → 8 个维度 ±1 手坐标下降；再换 3 个随机种子重算最优解。</p>
+        <p>其他方法（Markowitz 均值方差、Kelly、Ledoit-Wolf、Black-Litterman、时间序列动量）将作为后续版本的对照模式。</p>
+      </div>
+    </details>
+  </section>
+
+  <footer>
+    <p id="engine-info" class="muted small"></p>
+    <p class="disclaimer">仅用于 2026「中金所杯」模拟交易比赛，不构成真实投资建议。模型估计不代表未来收益，下单请自行在 App 中手动完成。</p>
+  </footer>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

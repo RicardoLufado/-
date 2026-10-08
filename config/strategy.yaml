@@ -1,0 +1,44 @@
+# 策略与模型参数。改这里不用改代码。
+
+competition:
+  final_date: "2026-11-20"       # 初赛最后一个交易日，按当日收盘价平仓
+  initial_total: 2000000         # 初始总金额（现货 100 万 + 期货 100 万）
+
+threshold:                       # 晋级线 τ ~ U[low, high]（Student-t 粗估，仅量级参考）
+  low: 2080000
+  high: 2160000
+  note: 用前 100 名榜单两期数据按 Student-t（尺度 ∝ √交易日）粗估第 3000 名在 11-20 约 +4%~+8%，仅为量级参考
+
+data:
+  history_start: "2023-05-01"    # TL 自 2023-04 上市
+  outlier_mad_k: 6.0             # 国债主连日收益 |r| > k × 稳健标准差 的点剔除
+  retries: 3
+  timeout_sec: 20
+  interval_sec: 1.0
+
+model:
+  ewma_lambda: 0.94
+  block_len: 5
+  paths_screen: 2000             # 初筛路径数
+  paths_final: 10000             # 终评路径数
+  seed: 20261009                 # 主随机种子（固定）
+  robustness_seeds: [101, 202, 303]   # 换 3 个种子重算最优解
+
+risk:
+  margin_cap: 0.70               # 开仓保证金 ≤ 70% × 期货权益
+  liq_ratio: 1.0                 # 权益 < 保证金 × liq_ratio 视为爆仓（当天收盘全部平仓，此后权益冻结）
+
+search:
+  max_equity_products: 2         # 最多两个股指品种
+  equity_lot_range: 3            # 每个股指品种 −3 到 +3 手
+  bond_levels: 15                # 国债品种在保证金上限内取约 15 个等距手数
+  top_k: 30                      # 初筛前 30 名进入终评
+  descent_starts: 3              # 从终评前几名分别做坐标下降
+  max_descent_iters: 200
+
+status:
+  lock_tolerance: 0.005          # 「锁定」状态下，若模式 D 晋级概率与 A 相差不到 0.5 个百分点，则推荐 D
+
+site:
+  repo_fallback: RicardoLufado/-  # 运行环境里没有 GITHUB_REPOSITORY 时用它生成「去 GitHub 重新计算」链接
+  history_keep: 300              # 最多保留多少份历史存档

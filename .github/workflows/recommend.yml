@@ -1,0 +1,99 @@
+name: recommend
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "45 0 * * 1-5"   # 北京时间 08:45（周一至周五）
+    - cron: "35 7 * * 1-5"   # 北京时间 15:35（周一至周五）
+  push:
+    branches: [main]
+    paths:
+      - "state/**"
+      - "engine/**"
+      - "site/**"
+      - "config/**"
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 安装依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          python -c "import akshare; print('akshare', akshare.__version__)"
+
+      - name: 恢复数据缓存
+        uses: actions/cache/restore@v4
+        with:
+          path: data/cache
+          key: data-cache-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            data-cache-
+
+      - name: 运行引擎
+        id: engine
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python -m engine.run 2>&1 | tee engine.log
+
+      - name: 引擎失败时用上次成功的结果
+        if: steps.engine.outcome != 'success'
+        run: python -m engine.fallback --log engine.log
+
+      - name: 结果摘要
+        if: always()
+        run: |
+          python - <<'EOF'
+          import json, pathlib
+          p = pathlib.Path("site/data/latest.json")
+          if not p.exists():
+              print("没有 latest.json"); raise SystemExit(0)
+          d = json.loads(p.read_text(encoding="utf-8"))
+          print("generated_at:", d.get("generated_at"), "| data_asof:", d.get("data_asof"), "| status:", d.get("status"))
+          for s in d.get("data_sources", []):
+              print(f"  {s['status']:>9} | {s['name']} | {s.get('rows')} 行 | {s.get('first_date')} ~ {s.get('last_date')}")
+          for m in d.get("modes", []):
+              print(f"  {m['id']:>5} | {m['summary']} | 晋级概率 {m['metrics']['promotion_prob']:.2%}")
+          for w in d.get("warnings", []):
+              print("  [警告]", w)
+          EOF
+
+      - name: 保存数据缓存
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/cache
+          key: data-cache-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

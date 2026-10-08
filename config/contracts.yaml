@@ -1,0 +1,102 @@
+# 合约参数（2612 合约）。每项注明来源；未核实的标「待核实」。
+# 来源说明：
+#   「官方规则」= 比赛官方海报 / App「比赛规则」「常见问题」页
+#   「App反推」  = 用 App「1手多少钱」÷（显示价 × 乘数）反推，用户已核实
+#   「中金所规则」= 中金所合约规则（乘数、最小变动、到期日规则）
+#   「待核实」  = 默认值，尚未与比赛系统核对
+
+contract_month: "2612"
+
+# 股指期货 2612 到期日（12 月第三个周五）。国债期货 2612 最后交易日为 12 月第二个周五。
+expiry:
+  equity: "2026-12-18"   # 中金所规则：合约到期月份的第三个周五
+  bond: "2026-12-11"     # 中金所规则：合约到期月份的第二个周五
+
+contracts:
+  - product: IF
+    app_name: 沪深2612
+    kind: equity
+    history_symbol: sh000300        # 历史用指数，不用主力连续合约
+    history_name: 沪深300指数
+    multiplier: 300                 # 中金所规则
+    tick: 0.2                       # 中金所规则
+    margin_rate: 0.15               # App反推（4248.0 × 300 × 15% = 191,160），已核实
+    app_price_1008: 4248.0          # App 显示价（10-08），仅用于核对，不参与计算
+    fee: {type: ratio, open: 0.000023, close: 0.000023, close_today: 0.00023, status: 待核实}
+
+  - product: IH
+    app_name: 上证2612
+    kind: equity
+    history_symbol: sh000016
+    history_name: 上证50指数
+    multiplier: 300
+    tick: 0.2
+    margin_rate: 0.15               # App反推（2764.4 × 300 × 15% ≈ 124,399），已核实
+    app_price_1008: 2764.4
+    fee: {type: ratio, open: 0.000023, close: 0.000023, close_today: 0.00023, status: 待核实}
+
+  - product: IC
+    app_name: 中证500股指2612
+    kind: equity
+    history_symbol: sh000905
+    history_name: 中证500指数
+    multiplier: 200
+    tick: 0.2
+    margin_rate: 0.15               # App反推（7122.8 × 200 × 15% = 213,684），已核实
+    app_price_1008: 7122.8
+    fee: {type: ratio, open: 0.000023, close: 0.000023, close_today: 0.00023, status: 待核实}
+
+  - product: IM
+    app_name: 中证1000股指2612
+    kind: equity
+    history_symbol: sh000852
+    history_name: 中证1000指数
+    multiplier: 200
+    tick: 0.2
+    margin_rate: 0.15               # App反推（7022.2 × 200 × 15% = 210,666），已核实
+    app_price_1008: 7022.2
+    fee: {type: ratio, open: 0.000023, close: 0.000023, close_today: 0.00023, status: 待核实}
+
+  - product: TS
+    app_name: 二债2612
+    kind: bond
+    history_symbol: TS0             # 新浪主力连续合约（未复权）
+    history_name: 二债主连
+    multiplier: 20000               # 中金所规则：每 1 元报价 = 2 万元
+    tick: 0.002
+    margin_rate: 0.01               # App反推（1 手 20,512），已核实
+    app_price_1008: 102.6
+    fee: {type: fixed, open: 3.0, close: 3.0, close_today: 3.0, status: 待核实}
+
+  - product: TF
+    app_name: 五债2612
+    kind: bond
+    history_symbol: TF0
+    history_name: 五债主连
+    multiplier: 10000               # 每 1 元报价 = 1 万元
+    tick: 0.005
+    margin_rate: 0.02               # App反推（1 手 21,284），已核实
+    app_price_1008: 106.4
+    fee: {type: fixed, open: 3.0, close: 3.0, close_today: 3.0, status: 待核实}
+
+  - product: T
+    app_name: 十债2612
+    kind: bond
+    history_symbol: T0
+    history_name: 十债主连
+    multiplier: 10000
+    tick: 0.005
+    margin_rate: 0.03               # App反推（1 手 32,808），已核实
+    app_price_1008: 109.4
+    fee: {type: fixed, open: 3.0, close: 3.0, close_today: 3.0, status: 待核实}
+
+  - product: TL
+    app_name: 三十债2612
+    kind: bond
+    history_symbol: TL0
+    history_name: 三十债主连
+    multiplier: 10000
+    tick: 0.01
+    margin_rate: 0.045              # App反推（1 手 52,587），已核实
+    app_price_1008: 116.9
+    fee: {type: fixed, open: 3.0, close: 3.0, close_today: 3.0, status: 待核实}
