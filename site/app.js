@@ -68,7 +68,14 @@
     html += row("当前总金额", '<span class="big num">' + money(get(d, "account.total")) + "</span>");
     html += row("　现货（模型估计）", '<span class="num">' + money(spot.value) + "</span>" +
       (isNum(spot.etf) ? '<br><span class="muted small">ETF ' + wan(spot.etf) + " + 债券 " + wan(spot.bond) + "</span>" : ""));
-    html += row("　期货权益", '<span class="num">' + money(get(d, "account.futures_equity")) + '</span><br><span class="muted small">account.json 更新于 ' + esc(get(d, "account.updated_at") || "") + "</span>");
+    var acc = d.account || {};
+    var eqNote = acc.futures_equity_estimated
+      ? "App 报告 " + wan(acc.futures_equity_reported) + "（" + esc(String(acc.updated_at || "").slice(5, 10)) + "）" +
+        (acc.futures_equity >= acc.futures_equity_reported ? " + " : " − ") + "盯市 " +
+        wan(Math.abs(acc.futures_equity - acc.futures_equity_reported))
+      : "account.json 更新于 " + esc(acc.updated_at || "");
+    html += row(acc.futures_equity_estimated ? "　期货权益（模型估计）" : "　期货权益",
+      '<span class="num">' + money(acc.futures_equity) + '</span><br><span class="muted small">' + eqNote + "</span>");
     html += row("晋级线区间", isNum(thr.low) ? wan(thr.low, 0) + " – " + wan(thr.high, 0) : MISSING);
     html += row("当前状态", d.status ? '<span class="pill ' + statusCls + '">' + esc(d.status) + "</span>" : MISSING);
     if (d.horizon) html += row("剩余交易日", d.horizon.trading_days + " 天（" + esc(String(d.horizon.start).slice(5)) + " → " + esc(String(d.horizon.end).slice(5)) + "）");

@@ -23,6 +23,7 @@ from . import report
 from .config import (BEIJING, ROOT, ContractSpec, load_account, load_contracts, load_strategy,
                      now_beijing, to_date)
 from .data import CACHE_DIR, MarketData, fetch_market_data
+from .equity import mark_to_market
 from .model import (ModelInputs, bond_roll_returns, build_returns, build_scenario,
                     count_trading_days_after, ewma_filter)
 from .optimize import search
@@ -147,10 +148,12 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
         warnings.append(f"沪深300 在 {account['spot_cost_date']} 没有收盘价，用 {sp['csi300_cost_date']} 代替")
     if sp["asof_used"] != account["spot_value_asof"]:
         warnings.append(f"沪深300 在 {account['spot_value_asof']} 没有收盘价，用 {sp['asof_used']} 代替")
-    E0 = float(account["futures_equity"])
+    eq = mark_to_market(account, spec, md.contract_daily, t0)
+    warnings.extend(eq["warnings"])
+    E0 = float(eq["estimate"])
     total_now = sp["total"] + E0
-    if to_date(account["updated_at"]) < t0:
-        warnings.append(f"account.json 更新于 {account['updated_at']}，早于数据日 {t0}：期货权益和持仓请以 App 为准并及时更新")
+    if eq["estimated"]:
+        log(f"期货权益：报告 {eq['reported']:,.2f}（{eq['reported_date']}）→ 盯市估算 {E0:,.2f}")
 
     mi = ModelInputs(
         products=products, kinds=kinds,
@@ -294,6 +297,10 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
         "account": {
             "updated_at": account["updated_at"],
             "futures_equity": E0,
+            "futures_equity_reported": eq["reported"],
+            "futures_equity_estimated": eq["estimated"],
+            "futures_equity_method": eq["method"],
+            "futures_equity_adjustments": eq["adjustments"],
             "positions": account["positions"],
             "spot": {"value": sp["total"], "etf": sp["etf"], "bond": sp["bond"], "asof": t0.isoformat(),
                      "etf_asof": sp["etf_asof"], "bond_asof": sp["bond_asof"],

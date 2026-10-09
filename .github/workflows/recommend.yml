@@ -2,9 +2,21 @@ name: recommend
 
 on:
   workflow_dispatch:
+  # 上海时间（Asia/Shanghai），周一至周五。GitHub 定时任务可能延迟或漏跑，
+  # 所以开盘前、收盘后各设 3 个时间点，跑到哪次都行，最新一次覆盖之前的结果。
   schedule:
-    - cron: "45 0 * * 1-5"   # 北京时间 08:45（周一至周五）
-    - cron: "35 7 * * 1-5"   # 北京时间 15:35（周一至周五）
+    - cron: "25 8 * * 1-5"
+      timezone: "Asia/Shanghai"
+    - cron: "45 8 * * 1-5"
+      timezone: "Asia/Shanghai"
+    - cron: "5 9 * * 1-5"
+      timezone: "Asia/Shanghai"
+    - cron: "20 15 * * 1-5"
+      timezone: "Asia/Shanghai"
+    - cron: "35 15 * * 1-5"
+      timezone: "Asia/Shanghai"
+    - cron: "50 15 * * 1-5"
+      timezone: "Asia/Shanghai"
   push:
     branches: [main]
     paths:

@@ -61,6 +61,12 @@ def main(path: str = "site/data/latest.json") -> int:
     if acc:
         print(f"总金额 {acc.get('total'):,.2f} = 现货 {sp.get('value'):,.2f}（ETF {sp.get('etf'):,.2f} + 债 {sp.get('bond'):,.2f}）"
               f" + 期货 {acc.get('futures_equity'):,.2f}")
+    if acc.get("futures_equity_estimated"):
+        print(f"期货权益：报告 {acc.get('futures_equity_reported'):,.2f}（{acc.get('updated_at')}）→ 盯市估算 "
+              f"{acc.get('futures_equity'):,.2f}；{acc.get('futures_equity_method')}")
+        for a in acc.get("futures_equity_adjustments") or []:
+            print(f"  盯市 {a['code']} {a['side']} {a['lots']} 手：{a['close_ref']}（{a['close_ref_date']}）→ "
+                  f"{a['close_now']}（{a['close_now_date']}）= {a['pnl']:+,.0f}")
     h = d.get("horizon") or {}
     if h:
         print(f"路径：{h.get('start')} ~ {h.get('end')}，{h.get('trading_days')} 个交易日，D0={h.get('D0')}，日历：{h.get('calendar_source')}")
