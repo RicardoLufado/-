@@ -16,17 +16,20 @@ class EvalResult:
     E_final: np.ndarray    # (P, B) 期末期货权益（爆仓后冻结，负值保留）
     liquidated: np.ndarray  # (P, B) bool 是否爆仓（含穿仓）
     wiped: np.ndarray      # (P, B) bool 是否穿仓（爆仓当天权益 < 0）
-    stop_day: np.ndarray   # (P, B) 爆仓日下标，未爆仓为 -1
+    stop_day: np.ndarray   # (P, B) 爆仓 / 止损日下标，都没发生为 -1
     dW1: np.ndarray        # (P, B) 第 1 天总金额变化（不含手续费）
+    stopped: np.ndarray | None = None   # (P, B) bool 是否触发止损线（不含爆仓）
 
 
-def evaluate(sc: Scenario, N: np.ndarray, E0: float, liq_ratio: float) -> EvalResult:
+def evaluate(sc: Scenario, N: np.ndarray, E0: float, liq_ratio: float,
+             floor: float | None = None) -> EvalResult:
     """N: (B, K) 整数手数（正 = 多，负 = 空）。
 
     E_h = E₀ − 开仓费 + Σ nᵢ × 单手累计盈亏ᵢ,h
     M_h = Σ |nᵢ| × 单手保证金ᵢ,h
     第一次出现 E_h < M_h × liq_ratio（或 E_h < 0）的那天按收盘价全部平仓，此后权益冻结；
     该日 E_h < 0 记为穿仓，负权益保留不截断。期末再扣平仓费。
+    floor：止损线（期货权益）。收盘权益第一次低于它的那天全部平仓、此后冻结（模型只在收盘检查）。
     """
     N = np.atleast_2d(np.asarray(N, dtype=float))
     P, H, K = sc.pnl.shape
@@ -44,6 +47,7 @@ def evaluate(sc: Scenario, N: np.ndarray, E0: float, liq_ratio: float) -> EvalRe
     liq = np.empty((P, B), dtype=bool)
     wiped = np.empty((P, B), dtype=bool)
     stop_day = np.empty((P, B), dtype=np.int32)
+    stopped = np.zeros((P, B), dtype=bool)
     dW1 = np.empty((P, B))
 
     step = max(1, ELEMENT_BUDGET // (P * H))
@@ -52,18 +56,22 @@ def evaluate(sc: Scenario, N: np.ndarray, E0: float, liq_ratio: float) -> EvalRe
         Nb, Ab = N[s:e], absN[s:e]
         E = (E0 - fee_open[s:e])[None, None, :] + (pnl2 @ Nb.T).reshape(P, H, e - s)
         M = (mar2 @ Ab.T).reshape(P, H, e - s)
-        breach = (E < liq_ratio * M) | (E < 0)
+        breach_liq = (E < liq_ratio * M) | (E < 0)
+        breach = breach_liq | (E < floor) if floor is not None else breach_liq
         any_b = breach.any(axis=1)
         first = breach.argmax(axis=1)
         E_stop = np.take_along_axis(E, first[:, None, :], axis=1)[:, 0, :]
+        liq_first = np.take_along_axis(breach_liq, first[:, None, :], axis=1)[:, 0, :]
         Ef = np.where(any_b, E_stop, E[:, -1, :]) - fee_close[s:e][None, :]
         E_final[:, s:e] = Ef
-        liq[:, s:e] = any_b
-        wiped[:, s:e] = any_b & (E_stop < 0)
+        liq[:, s:e] = any_b & liq_first
+        stopped[:, s:e] = any_b & ~liq_first
+        wiped[:, s:e] = any_b & liq_first & (E_stop < 0)
         stop_day[:, s:e] = np.where(any_b, first, -1)
         W[:, s:e] = spotH[:, None] + Ef
         dW1[:, s:e] = (spot1 - sc.spot0)[:, None] + (E[:, 0, :] - (E0 - fee_open[s:e])[None, :])
-    return EvalResult(W=W, E_final=E_final, liquidated=liq, wiped=wiped, stop_day=stop_day, dW1=dW1)
+    return EvalResult(W=W, E_final=E_final, liquidated=liq, wiped=wiped, stop_day=stop_day, dW1=dW1,
+                      stopped=stopped)
 
 
 def ramp_objective(W: np.ndarray, low: float, high: float) -> np.ndarray:

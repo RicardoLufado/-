@@ -106,6 +106,32 @@ def main() -> int:
             cells = [f"{rel_prob(pnl[:, [j]], r_csi, nc, lo, hi)[0]:>10.1%}" for nc in crowd.values()]
             print(f"{name:<10} | " + " | ".join(cells))
 
+    # ---- 止损线方案：期货盈利跌到 +3 万就全部平仓（模型只在每天收盘检查）----
+    floor_pnl = 30_000.0
+    floor = INITIAL_FUTURES + floor_pnl
+    stop_plans = {
+        "3手IM 不止损": (vec(IM=3), None),
+        "3手IM +止损": (vec(IM=3), floor),
+        "2手IM +止损": (vec(IM=2), floor),
+        "1手IM +止损": (vec(IM=1), floor),
+        "1手IF 不止损": (vec(IF=1), None),
+        "1手IF +止损": (vec(IF=1), floor),
+        "2手IF +止损": (vec(IF=2), floor),
+        "全部平仓": (vec(), None),
+    }
+    print(f"\n=== 止损线方案（期货盈利跌破 {floor_pnl:+,.0f} 当天收盘全部平仓）===")
+    print("晋级概率：基准 0–6 万；「平均」= 4 档人群假设的平均，「最差」= 其中最低；「保守平均」= 3–9 万口径的平均")
+    print(f"{'方案':<10} | 爆仓 | 触发止损 | 晋级 平均 | 最差 | 保守平均 | 盈利≥20万 | 盈亏5% | 盈亏95%")
+    for name, (n, fl) in stop_plans.items():
+        r = evaluate(sc, n[None, :], E0, liq, floor=fl)
+        p = r.E_final[:, [0]] - INITIAL_FUTURES
+        base = [rel_prob(p, r_csi, nc, *BANDS["基准 0–6 万"])[0] for nc in crowd.values()]
+        cons = [rel_prob(p, r_csi, nc, *BANDS["保守 3–9 万"])[0] for nc in crowd.values()]
+        q5, q95 = np.percentile(p[:, 0], [5, 95])
+        print(f"{name:<10} | {r.liquidated.mean():5.1%} | {r.stopped.mean():6.1%} | {np.mean(base):7.1%} | "
+              f"{min(base):5.1%} | {np.mean(cons):6.1%} | {np.mean(p[:, 0] >= 200_000):7.1%} | "
+              f"{q5:+,.0f} | {q95:+,.0f}")
+
     print("\n=== 模型在相对口径下的最优手数（基准 0–6 万）===")
     lo, hi = BANDS["基准 0–6 万"]
     for cname, nc in crowd.items():

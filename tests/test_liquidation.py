@@ -77,3 +77,15 @@ def test_empty_portfolio_never_liquidates():
     r = evaluate(scenario(), np.array([[0]]), E0=E0, liq_ratio=1.0)
     assert not r.liquidated.any()
     np.testing.assert_allclose(r.E_final, E0)
+
+
+def test_floor_stop_loss_freezes_equity_above_liquidation():
+    # 路径 1：第 2 天（下标 1）权益 180000，低于止损线 200000 → 止损平仓、冻结，不算爆仓
+    r = evaluate(scenario(), np.array([[1]]), E0=E0, liq_ratio=1.0, floor=200_000)
+    assert r.stopped[1, 0] and not r.liquidated[1, 0]
+    assert r.stop_day[1, 0] == 1
+    assert r.E_final[1, 0] == pytest.approx(E0 - 400 * MULT)
+    # 路径 2：当天直接跳到负权益 → 爆仓 + 穿仓优先于止损
+    assert r.liquidated[2, 0] and r.wiped[2, 0] and not r.stopped[2, 0]
+    # 路径 0：从未跌破止损线
+    assert not r.stopped[0, 0] and r.stop_day[0, 0] == -1
