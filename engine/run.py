@@ -212,7 +212,8 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
             b = build_scenario(mi, paths_final, s + 1)
             r = search(a, b, kinds, E0, strategy, thr, log, f"稳健性 seed={s}")
             same = metrics(b, resA.n, E0, liq, thr=thr)["promotion_prob"]
-            runs.append({"seed": s, "lots": dict(zip(products, map(int, r.n))), "promotion_prob": r.score,
+            own = metrics(b, r.n, E0, liq, thr=thr)["promotion_prob"]      # 不含简洁规则扣分
+            runs.append({"seed": s, "lots": dict(zip(products, map(int, r.n))), "promotion_prob": own,
                          "recommended_on_this_seed": same})
         probs = [r["promotion_prob"] for r in runs]
         rob = {"runs": runs, "min": min(probs), "max": max(probs),

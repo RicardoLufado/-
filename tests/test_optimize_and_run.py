@@ -147,3 +147,13 @@ def test_fetcher_retries_then_uses_cache(tmp_path):
 
     df3, rec3 = f2.fetch("never", "测试2", "fake()", boom, date_col="date")
     assert df3 is None and rec3.status == "missing" and "超时" in rec3.error
+
+
+def test_leg_penalty_prefers_simpler_portfolio():
+    from engine.optimize import score
+    F = np.array([[[4000.0, 100.0], [4040.0, 100.1]], [[4000.0, 100.0], [3960.0, 99.9]]])
+    sc = make_scenario(F, F0=[4000.0, 100.0], mult=[300, 10000], margin_rate=[0.15, 0.03])
+    N = np.array([[1, 0], [1, 1]])
+    flat = lambda W: np.zeros(W.shape[1])          # noqa: E731  两个方案原始分数相同
+    s = score(sc, N, 1_000_000, 1.0, flat, leg_penalty=0.003)
+    np.testing.assert_allclose(s, [-0.003, -0.006])  # 多一个品种多扣 0.3 个百分点

@@ -47,6 +47,7 @@ search:
   top_k: 30                      # 初筛前 30 名进入终评
   descent_starts: 3              # 从终评前几名分别做坐标下降
   max_descent_iters: 200
+  leg_penalty: 0.003             # 简洁规则：每多一个品种，晋级概率至少要多 0.3 个百分点才值得
 
 status:
   lock_tolerance: 0.005          # 「锁定」状态下，若模式 D 晋级概率与 A 相差不到 0.5 个百分点，则推荐 D

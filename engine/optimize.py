@@ -62,15 +62,22 @@ def enumerate_candidates(sc: Scenario, kinds: list[str], E0: float, search: dict
     return N
 
 
-def score(sc: Scenario, N: np.ndarray, E0: float, liq_ratio: float, objective: Objective) -> np.ndarray:
+def score(sc: Scenario, N: np.ndarray, E0: float, liq_ratio: float, objective: Objective,
+          leg_penalty: float = 0.0) -> np.ndarray:
+    """leg_penalty：每多持有一个品种扣的分（简洁规则：为一点点改进多下几笔单不值得）。"""
     W = evaluate(sc, N, E0, liq_ratio).W
     if getattr(objective, "needs_scenario", False):     # 目标函数需要知道是哪一套路径（如相对晋级线）
-        return objective(W, sc)
-    return objective(W)
+        s = objective(W, sc)
+    else:
+        s = objective(W)
+    if leg_penalty:
+        s = s - leg_penalty * np.count_nonzero(np.atleast_2d(N), axis=1)
+    return s
 
 
 def coordinate_descent(sc: Scenario, n0: np.ndarray, s0: float, E0: float, liq_ratio: float,
-                       objective: Objective, cap: float, max_iters: int = 200) -> tuple[np.ndarray, float, int]:
+                       objective: Objective, cap: float, max_iters: int = 200,
+                       leg_penalty: float = 0.0) -> tuple[np.ndarray, float, int]:
     """每步在 8 个维度上各试 ±1 手（满足保证金约束的），取最好的；不再改进就停。"""
     n, best = n0.copy(), s0
     K = len(n)
@@ -88,7 +95,7 @@ def coordinate_descent(sc: Scenario, n0: np.ndarray, s0: float, E0: float, liq_r
         nbrs = nbrs[margin_ok(nbrs, sc.margin0, cap)]
         if len(nbrs) == 0:
             break
-        sc_n = score(sc, nbrs, E0, liq_ratio, objective)
+        sc_n = score(sc, nbrs, E0, liq_ratio, objective, leg_penalty)
         j = int(np.argmax(sc_n))
         if sc_n[j] > best + 1e-12:
             n, best = nbrs[j].copy(), float(sc_n[j])
@@ -104,14 +111,15 @@ def search(sc_screen: Scenario, sc_final: Scenario, kinds: list[str], E0: float,
     cap = float(risk["margin_cap"]) * E0
     liq = float(risk["liq_ratio"])
 
+    pen = float(srch.get("leg_penalty", 0.0))
     N = enumerate_candidates(sc_screen, kinds, E0, srch, float(risk["margin_cap"]))
     ok = margin_ok(N, sc_screen.margin0, cap)
     Nf = N[ok]
-    s1 = score(sc_screen, Nf, E0, liq, objective)
+    s1 = score(sc_screen, Nf, E0, liq, objective, pen)
     top_k = min(int(srch["top_k"]), len(Nf))
     top_idx = np.argsort(-s1, kind="stable")[:top_k]
     Ntop = Nf[top_idx]
-    s2 = score(sc_final, Ntop, E0, liq, objective)
+    s2 = score(sc_final, Ntop, E0, liq, objective, pen)
     order = np.argsort(-s2, kind="stable")
     log(f"[{label}] 候选 {len(N)} 个，满足保证金约束 {len(Nf)} 个；初筛 {sc_screen.n_paths} 条路径，"
         f"前 {top_k} 名换 {sc_final.n_paths} 条路径复评")
@@ -119,7 +127,7 @@ def search(sc_screen: Scenario, sc_final: Scenario, kinds: list[str], E0: float,
     best_n, best_s, steps_total = Ntop[order[0]].copy(), float(s2[order[0]]), 0
     for j in order[: int(srch["descent_starts"])]:
         n, s, steps = coordinate_descent(sc_final, Ntop[j], float(s2[j]), E0, liq, objective, cap,
-                                         int(srch["max_descent_iters"]))
+                                         int(srch["max_descent_iters"]), pen)
         steps_total += steps
         if s > best_s + 1e-12:
             best_n, best_s = n, s
