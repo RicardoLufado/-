@@ -55,3 +55,53 @@ def test_from_config_and_variance_objective():
     W = np.array([[1_900_000.0], [2_000_000.0], [2_100_000.0]])   # 期货权益恒为 100 万，波动全来自现货
     assert VarianceObjective(True)(W, sc)[0] == pytest.approx(0.0)
     assert VarianceObjective(False)(W, sc)[0] < 0
+
+
+# ---- 端到端：build() 在两种口径下的行为 ----
+
+from datetime import datetime  # noqa: E402
+
+from engine.config import BEIJING, load_contracts, load_strategy  # noqa: E402
+from engine.run import build  # noqa: E402
+from engine.synthetic import synthetic_market_data  # noqa: E402
+from tests.helpers import base_account  # noqa: E402
+
+
+def _run(strategy, account):
+    spec = load_contracts()
+    md = synthetic_market_data(spec)
+    return build(spec, strategy, account, md, datetime(2026, 10, 9, 8, 45, tzinfo=BEIJING),
+                 paths_screen=200, paths_final=600, robustness=False)
+
+
+def test_relative_mode_end_to_end_lock_when_ahead():
+    strategy = load_strategy()
+    strategy["threshold"]["mode"] = "relative"
+    acc = dict(base_account(), futures_equity=1_063_984.58)       # 期货领先 +6.4 万 ≥ 上沿 6 万
+    res = _run(strategy, acc)
+    thr = res["threshold"]
+    assert thr["mode"] == "relative" and res["status"] == "锁定"
+    assert thr["position"] == pytest.approx(63_984.58)
+    spot = res["account"]["spot"]["value"]
+    assert thr["band_total_low"] == pytest.approx(spot + INITIAL_FUTURES + thr["low"])
+    assert thr["band_total_high"] == pytest.approx(spot + INITIAL_FUTURES + thr["high"])
+    A = next(m for m in res["modes"] if m["id"] == "A")
+    E = next(m for m in res["modes"] if m["id"] == "empty")
+    assert A["metrics"]["promotion_prob"] >= E["metrics"]["promotion_prob"] - 0.01
+    assert any("名次只看期货账户" in x for x in res["explanations"])
+
+
+def test_relative_mode_chasing_when_behind():
+    strategy = load_strategy()
+    strategy["threshold"]["mode"] = "relative"
+    res = _run(strategy, dict(base_account(), futures_equity=950_000.0))   # 期货亏 5 万
+    assert res["status"] == "追赶"
+
+
+def test_absolute_mode_still_supported():
+    strategy = load_strategy()
+    strategy["threshold"]["mode"] = "absolute"
+    res = _run(strategy, base_account())
+    assert res["threshold"]["mode"] == "absolute"
+    assert res["threshold"]["band_total_low"] == strategy["threshold"]["low"]
+    assert res["status"] == "追赶"        # 198 万 < 208 万
