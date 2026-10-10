@@ -7,9 +7,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from engine.config import BEIJING, load_account, load_contracts, load_strategy
+from engine.config import BEIJING, load_contracts, load_strategy
 from engine.data import fetch_market_data, weekday_calendar
 from engine.run import build
+from tests.helpers import base_account
 
 DAYS = [d for d in weekday_calendar(date(2023, 1, 2), date(2026, 12, 31)) if d <= date(2026, 9, 30)]
 LEVEL = {"sh000300": 4250.0, "sh000016": 2770.0, "sh000905": 7150.0, "sh000852": 7080.0,
@@ -89,7 +90,7 @@ def test_real_pipeline_with_fake_akshare(fake_ak, tmp_path):
     assert set(md.closes) == set(spec.products)
     assert all(s.status == "ok" for s in md.sources if s.key != "spot")
     assert md.spot_quotes == {}                                        # 盘中价失败 → 跳过
-    res = build(spec, strategy, load_account(), md, datetime(2026, 10, 9, 8, 45, tzinfo=BEIJING),
+    res = build(spec, strategy, base_account(), md, datetime(2026, 10, 9, 8, 45, tzinfo=BEIJING),
                 paths_screen=200, paths_final=600, robustness=False)
     assert res["data_asof"] == "2026-09-30"
     assert res["synthetic"] is False
@@ -116,7 +117,7 @@ def test_missing_source_without_cache_excludes_product(fake_ak, tmp_path):
     spec, strategy = load_contracts(), _strategy()
     strategy["data"]["retries"] = 1
     md = fetch_market_data(spec, strategy, tmp_path, log=lambda *_: None, with_spot=False)
-    res = build(spec, strategy, load_account(), md, datetime(2026, 10, 9, 8, 45, tzinfo=BEIJING),
+    res = build(spec, strategy, base_account(), md, datetime(2026, 10, 9, 8, 45, tzinfo=BEIJING),
                 paths_screen=200, paths_final=600, robustness=False)
     tl = next(c for c in res["contracts"] if c["product"] == "TL")
     assert tl["tradable"] is False and tl["ref_price"] is None
@@ -130,5 +131,5 @@ def test_critical_source_missing_raises(fake_ak, tmp_path):
     strategy["data"]["retries"] = 1
     md = fetch_market_data(spec, strategy, tmp_path, log=lambda *_: None, with_spot=False)
     with pytest.raises(RuntimeError, match="沪深300"):
-        build(spec, strategy, load_account(), md, datetime(2026, 10, 9, 8, 45, tzinfo=BEIJING),
+        build(spec, strategy, base_account(), md, datetime(2026, 10, 9, 8, 45, tzinfo=BEIJING),
               paths_screen=100, paths_final=200, robustness=False)

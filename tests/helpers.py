@@ -6,6 +6,19 @@ import numpy as np
 from engine.model import Scenario
 
 
+def base_account() -> dict:
+    """测试专用账户（开赛初始状态），不读真实的 state/account.json。"""
+    return {
+        "updated_at": "2026-10-08",
+        "futures_equity": 1000000.00,
+        "positions": [],
+        "spot_value": 984052.96,
+        "spot_value_asof": "2026-09-30",
+        "registration_date": "2026-09-20",
+        "spot_cost_date": "2026-09-18",
+    }
+
+
 def make_scenario(F: np.ndarray, F0, mult, margin_rate, spot=None, spot0=0.0, fee_open=None, fee_close=None):
     """F: (P, H, K) 价格路径。"""
     F = np.asarray(F, dtype=float)

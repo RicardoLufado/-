@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from engine.config import BEIJING, load_account, load_contracts, load_strategy
+from engine.config import BEIJING, load_contracts, load_strategy
 from engine.data import Fetcher, ensure_calendar_covers, weekday_calendar
 from engine.fallback import write_fallback
 from engine.model import count_trading_days_after
@@ -15,7 +15,7 @@ from engine.optimize import enumerate_candidates, margin_ok, search
 from engine.portfolio import ramp_objective
 from engine.run import build, clean_json, write_outputs
 from engine.synthetic import synthetic_market_data
-from tests.helpers import make_scenario
+from tests.helpers import base_account, make_scenario
 
 
 def test_season_calendar_counts():
@@ -55,7 +55,7 @@ def test_enumeration_and_margin_filter():
 def test_search_respects_margin_cap_and_beats_empty():
     spec, strategy = load_contracts(), load_strategy()
     md = synthetic_market_data(spec)
-    res = build(spec, strategy, load_account(), md, datetime(2026, 10, 9, 8, 45, tzinfo=BEIJING),
+    res = build(spec, strategy, base_account(), md, datetime(2026, 10, 9, 8, 45, tzinfo=BEIJING),
                 paths_screen=300, paths_final=1500, robustness=False)
     A = next(m for m in res["modes"] if m["id"] == "A")
     E = next(m for m in res["modes"] if m["id"] == "empty")
@@ -69,7 +69,7 @@ def test_search_respects_margin_cap_and_beats_empty():
 def synthetic_result():
     spec, strategy = load_contracts(), load_strategy()
     md = synthetic_market_data(spec)
-    return build(spec, strategy, load_account(), md, datetime(2026, 10, 9, 8, 45, tzinfo=BEIJING),
+    return build(spec, strategy, base_account(), md, datetime(2026, 10, 9, 8, 45, tzinfo=BEIJING),
                  paths_screen=300, paths_final=1000, robustness=True)
 
 

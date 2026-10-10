@@ -4,10 +4,11 @@ from datetime import date, datetime
 import pandas as pd
 import pytest
 
-from engine.config import BEIJING, load_account, load_contracts, load_strategy
+from engine.config import BEIJING, load_contracts, load_strategy
 from engine.equity import mark_to_market
 from engine.run import build
 from engine.synthetic import synthetic_market_data
+from tests.helpers import base_account
 
 
 @pytest.fixture(scope="module")
@@ -66,7 +67,7 @@ def test_unknown_contract_warns(spec):
 
 def test_engine_uses_estimated_equity(spec):
     md = synthetic_market_data(spec, end=date(2026, 10, 9))
-    account = load_account()
+    account = base_account()
     account = dict(account, updated_at="2026-10-08",
                    positions=[{"code": "IM2612", "side": "long", "lots": 2, "avg_price": 7000.0}])
     res = build(spec, load_strategy(), account, md, datetime(2026, 10, 9, 16, 0, tzinfo=BEIJING),
