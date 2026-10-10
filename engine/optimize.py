@@ -63,7 +63,10 @@ def enumerate_candidates(sc: Scenario, kinds: list[str], E0: float, search: dict
 
 
 def score(sc: Scenario, N: np.ndarray, E0: float, liq_ratio: float, objective: Objective) -> np.ndarray:
-    return objective(evaluate(sc, N, E0, liq_ratio).W)
+    W = evaluate(sc, N, E0, liq_ratio).W
+    if getattr(objective, "needs_scenario", False):     # 目标函数需要知道是哪一套路径（如相对晋级线）
+        return objective(W, sc)
+    return objective(W)
 
 
 def coordinate_descent(sc: Scenario, n0: np.ndarray, s0: float, E0: float, liq_ratio: float,

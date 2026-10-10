@@ -1,0 +1,29 @@
+name: scenarios
+
+# 手动触发：相对晋级线口径下的方案对比（只打印结果，不部署网页）
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: 恢复数据缓存（只读）
+        uses: actions/cache/restore@v4
+        with:
+          path: data/cache
+          key: scenarios-${{ github.run_id }}
+          restore-keys: |
+            data-cache-
+      - name: 方案对比
+        run: python scripts/threshold_scenarios.py

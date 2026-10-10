@@ -192,4 +192,5 @@ def build_scenario(mi: ModelInputs, n_paths: int, seed: int) -> Scenario:
         fee_close=np.where(tradable, mi.fee_close, 0.0),
         margin0=np.where(tradable, F0 * mi.multipliers * mi.margin_rates, 0.0),
         tradable=tradable, seed=seed,
+        extra={"cum_H": cum[:, -1, :]},     # 各序列到期末的累计对数收益（指数 / 国债主连）
     )

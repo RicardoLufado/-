@@ -74,7 +74,8 @@ def last_completed_trading_day(calendar: list[date], now: datetime) -> date | No
 
 def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now: datetime,
           paths_screen: int | None = None, paths_final: int | None = None,
-          robustness: bool = True) -> dict:
+          robustness: bool = True, keep: dict | None = None) -> dict:
+    """keep：传入一个 dict 时，把情景等中间结果放进去（供 scripts/ 里的分析脚本复用同一套路径）。"""
     t_start = time.monotonic()
     warnings = list(md.warnings)
     mcfg, risk, thr = strategy["model"], strategy["risk"], strategy["threshold"]
@@ -172,6 +173,9 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
     seed = int(mcfg["seed"])
     sc_screen = build_scenario(mi, paths_screen, seed)
     sc_final = build_scenario(mi, paths_final, seed + 1)
+    if keep is not None:
+        keep.update(mi=mi, sc_screen=sc_screen, sc_final=sc_final, products=products, kinds=kinds,
+                    E0=E0, total_now=total_now, spot=sp, t0=t0, horizon=horizon)
     log(f"情景：{len(horizon)} 个交易日（{horizon[0]} ~ {horizon[-1]}），D0={D0}，"
         f"初筛 {paths_screen} 条 / 终评 {paths_final} 条路径")
 
