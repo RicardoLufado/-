@@ -1,9 +1,11 @@
 {
-  "updated_at": "2026-10-08",
-  "futures_equity": 1000000.00,
-  "positions": [],
-  "spot_value": 984052.96,
-  "spot_value_asof": "2026-09-30",
+  "updated_at": "2026-10-09",
+  "futures_equity": 1063984.58,
+  "positions": [
+    {"code": "IM2612", "side": "long", "lots": 3, "avg_price": 6914.6}
+  ],
+  "spot_value": 979239.06,
+  "spot_value_asof": "2026-10-09",
   "registration_date": "2026-09-20",
   "spot_cost_date": "2026-09-18"
 }
