@@ -78,13 +78,16 @@
 ## 目录
 
 ```
+TASK.md        当前目标、进度、下一步（Agent 和人都先看这里）
+CLAUDE.md      Agent 长期工作规则
+docs/          architecture.md（当前架构）、adr/（重大决策记录）
 config/        合约参数、策略参数
-state/         account.json（你的账户）
+state/         account.json（你的账户）、leaderboard.json（周榜记录）
 engine/        数据抓取、情景模型、优化、输出
 site/          网页（纯 HTML/CSS/JS，无外部 CDN）；site/data/ 由 Actions 生成
-scripts/       probe_sources.py 数据源探测
+scripts/       probe_sources.py 数据源探测、summarize.py 结果摘要、threshold_scenarios.py 方案对比
 tests/         pytest（全部用合成数据）
-.github/workflows/  recommend（计算+部署）、probe（探测）、tests（单元测试）
+.github/workflows/  recommend（计算+部署）、probe（探测）、tests（单元测试）、scenarios（方案对比）
 ```
 
 ## 本地运行（可选）
