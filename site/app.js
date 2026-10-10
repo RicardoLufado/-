@@ -76,7 +76,13 @@
       : "account.json 更新于 " + esc(acc.updated_at || "");
     html += row(acc.futures_equity_estimated ? "　期货权益（模型估计）" : "　期货权益",
       '<span class="num">' + money(acc.futures_equity) + '</span><br><span class="muted small">' + eqNote + "</span>");
-    html += row("晋级线区间", isNum(thr.low) ? wan(thr.low, 0) + " – " + wan(thr.high, 0) : MISSING);
+    if (thr.mode === "relative") {
+      html += row("晋级线（估计）", "期货盈利 " + wan(thr.low, 0) + " – " + wan(thr.high, 0) +
+        '<br><span class="muted small">≈ 总金额 ' + wan(thr.band_total_low) + " – " + wan(thr.band_total_high) + "（按当前现货）</span>");
+      html += row("你的期货盈利", '<span class="num">' + (isNum(thr.position) ? (thr.position >= 0 ? "+" : "") + money(thr.position) : MISSING) + "</span>");
+    } else {
+      html += row("晋级线区间", isNum(thr.low) ? wan(thr.low, 0) + " – " + wan(thr.high, 0) : MISSING);
+    }
     html += row("当前状态", d.status ? '<span class="pill ' + statusCls + '">' + esc(d.status) + "</span>" : MISSING);
     if (d.horizon) html += row("剩余交易日", d.horizon.trading_days + " 天（" + esc(String(d.horizon.start).slice(5)) + " → " + esc(String(d.horizon.end).slice(5)) + "）");
     $("summary").innerHTML = html;
@@ -202,14 +208,16 @@
     function Y(v) { return T + (1 - v / ymax) * (H - T - B); }
     var svg = '<svg viewBox="0 0 ' + W + " " + H + '" role="img" aria-label="期末总金额分布直方图">';
     var thr = d.threshold || {};
-    if (isNum(thr.low)) {
-      var bx0 = X(thr.low), bx1 = X(thr.high);
+    var bLo = isNum(thr.band_total_low) ? thr.band_total_low : thr.low;
+    var bHi = isNum(thr.band_total_high) ? thr.band_total_high : thr.high;
+    if (isNum(bLo)) {
+      var bx0 = X(bLo), bx1 = X(bHi);
       svg += '<rect class="band" x="' + bx0.toFixed(1) + '" y="' + (T - 14) + '" width="' + Math.max(1, bx1 - bx0).toFixed(1) + '" height="' + (H - B - T + 14) + '"></rect>';
       svg += '<text class="band-label" x="' + ((bx0 + bx1) / 2).toFixed(1) + '" y="' + (T - 4) + '" text-anchor="middle">晋级线区间</text>';
     }
     for (var i = 0; i < s.length; i++) {
       var mid = (e[i] + e[i + 1]) / 2;
-      var cls = isNum(thr.low) && mid >= thr.low ? "bar hit" : "bar";
+      var cls = isNum(bLo) && mid >= bLo ? "bar hit" : "bar";
       var rx = X(e[i]), rw = Math.max(0.5, X(e[i + 1]) - X(e[i]) - 0.6), ry = Y(s[i]);
       svg += '<rect class="' + cls + '" x="' + rx.toFixed(1) + '" y="' + ry.toFixed(1) + '" width="' + rw.toFixed(1) + '" height="' + Math.max(0, H - B - ry).toFixed(1) + '"><title>' +
         (e[i] / 10000).toFixed(1) + "–" + (e[i + 1] / 10000).toFixed(1) + " 万：" + (s[i] * 100).toFixed(2) + "%</title></rect>";
@@ -231,7 +239,7 @@
     svg += "</svg>";
     $("hist").innerHTML = svg;
     var m = modeById(d, state.histMode);
-    $("hist-note").innerHTML = "阴影 = 晋级线区间；深色柱 = 达到区间下沿；红色虚线 = 当前总金额。" +
+    $("hist-note").innerHTML = "阴影 = 晋级线区间" + (thr.mode === "relative" ? "（按当前现货折算的总金额；现货涨跌时整条线一起移动）" : "") + "；深色柱 = 达到区间下沿；红色虚线 = 当前总金额。" +
       (m ? esc(m.summary) + "：晋级概率 " + pct(get(m, "metrics.promotion_prob")) + "。" : "") + (h.note ? esc(h.note) + "。" : "");
   }
 

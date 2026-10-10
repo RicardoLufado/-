@@ -28,13 +28,15 @@ from .model import (ModelInputs, bond_roll_returns, build_returns, build_scenari
                     count_trading_days_after, ewma_filter)
 from .optimize import search
 from .orders import make_orders
-from .portfolio import metrics, neg_variance_objective, ramp_objective
+from .portfolio import metrics
+from .threshold import INITIAL_FUTURES, VarianceObjective
+from .threshold import from_config as threshold_from_config
 from .spot import spot_value_at
 
 SITE_DATA = ROOT / "site" / "data"
 MODE_NAMES = {
-    "A": ("模式 A：晋级概率最大化", "最大化 P(总金额 ≥ τ)，τ 在晋级线区间内均匀分布"),
-    "D": ("模式 D：锁定（最小方差）", "同样的整数枚举，最小化期末总金额的方差"),
+    "A": ("模式 A：晋级概率最大化", "最大化 P(排在晋级线之上)，晋级线在估计区间内均匀分布"),
+    "D": ("模式 D：锁定（最小波动）", "同样的整数枚举，最小化期末波动（相对口径下只看期货账户）"),
     "empty": ("空仓（目前状态）", "不做任何期货交易"),
     "ts1": ("1 手 TS", "只买多 1 手二债2612，满足「至少一笔有效交易」"),
 }
@@ -78,8 +80,7 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
     """keep：传入一个 dict 时，把情景等中间结果放进去（供 scripts/ 里的分析脚本复用同一套路径）。"""
     t_start = time.monotonic()
     warnings = list(md.warnings)
-    mcfg, risk, thr = strategy["model"], strategy["risk"], strategy["threshold"]
-    low, high = float(thr["low"]), float(thr["high"])
+    mcfg, risk, thr_cfg = strategy["model"], strategy["risk"], strategy["threshold"]
     final_date = to_date(strategy["competition"]["final_date"])
     paths_screen = int(paths_screen or mcfg["paths_screen"])
     paths_final = int(paths_final or mcfg["paths_final"])
@@ -180,9 +181,17 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
         f"初筛 {paths_screen} 条 / 终评 {paths_final} 条路径")
 
     liq = float(risk["liq_ratio"])
-    ramp = lambda W: ramp_objective(W, low, high)  # noqa: E731
-    resA = search(sc_screen, sc_final, kinds, E0, strategy, ramp, log, "模式 A")
-    resD = search(sc_screen, sc_final, kinds, E0, strategy, neg_variance_objective, log, "模式 D")
+    i_if = products.index("IF")
+    if_lot = float(sc_final.F0[i_if] * spec.by_product("IF").multiplier)
+    thr = threshold_from_config(thr_cfg, products, if_lot)
+    if thr.relative:
+        band_total = (sp["total"] + INITIAL_FUTURES + thr.low, sp["total"] + INITIAL_FUTURES + thr.high)
+        log(f"晋级线（相对口径）：期货盈利 {thr.low:+,.0f} ~ {thr.high:+,.0f}，按当前现货约合总金额 "
+            f"{band_total[0]:,.0f} ~ {band_total[1]:,.0f}；人群多头 {thr_cfg.get('crowd_if_lots')} 手 IF 等权")
+    else:
+        band_total = (thr.low, thr.high)
+    resA = search(sc_screen, sc_final, kinds, E0, strategy, thr, log, "模式 A")
+    resD = search(sc_screen, sc_final, kinds, E0, strategy, VarianceObjective(thr.relative), log, "模式 D")
 
     K = len(products)
     lots_by_mode = {"A": resA.n, "D": resD.n, "empty": np.zeros(K, dtype=int)}
@@ -201,8 +210,8 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
             s = int(s)
             a = build_scenario(mi, paths_screen, s)
             b = build_scenario(mi, paths_final, s + 1)
-            r = search(a, b, kinds, E0, strategy, ramp, log, f"稳健性 seed={s}")
-            same = metrics(b, resA.n, E0, liq, low, high)["promotion_prob"]
+            r = search(a, b, kinds, E0, strategy, thr, log, f"稳健性 seed={s}")
+            same = metrics(b, resA.n, E0, liq, thr=thr)["promotion_prob"]
             runs.append({"seed": s, "lots": dict(zip(products, map(int, r.n))), "promotion_prob": r.score,
                          "recommended_on_this_seed": same})
         probs = [r["promotion_prob"] for r in runs]
@@ -250,7 +259,7 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
     names = {p: spec.by_product(p).app_name for p in products}
     modes_out, W_by_mode = {}, {}
     for mid, n in lots_by_mode.items():
-        m = metrics(sc_final, n, E0, liq, low, high)
+        m = metrics(sc_final, n, E0, liq, thr=thr)
         W_by_mode[mid] = m.pop("_W")
         lots = {p: int(v) for p, v in zip(products, n)}
         target = {spec.by_product(p).code: v for p, v in lots.items() if v != 0}
@@ -280,13 +289,14 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
         if spec.by_code(p["code"]) is None:
             warnings.append(f"当前持仓 {p['code']} 不是 2612 合约，模型没有模拟它；下单指令按目标持仓给出了平仓")
 
-    status = report.classify_status(total_now, low, high)
+    status = thr.status(total_now, E0)
     recommended = "A"
     if status == "锁定" and (modes_out["D"]["metrics"]["promotion_prob"]
                            >= modes_out["A"]["metrics"]["promotion_prob"] - float(strategy["status"]["lock_tolerance"])):
         recommended = "D"
 
-    ctx = {"total_now": total_now, "spot_now": sp["total"], "E0": E0, "low": low, "high": high,
+    ctx = {"total_now": total_now, "spot_now": sp["total"], "E0": E0, "thr": thr, "band_total": band_total,
+           "crowd_if_lots": thr_cfg.get("crowd_if_lots"),
            "horizon_days": len(horizon), "contracts": contract_rows, "D0": D0, "modes": modes_out,
            "status": status, "removed_outliers": rinfo["removed_outliers"]}
 
@@ -312,7 +322,11 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
                      "method": "模型估计：ETF 按沪深300涨跌、债券按 T/TF 主连平均收益滚动"},
             "total": total_now,
         },
-        "threshold": {"low": low, "high": high, "note": thr.get("note")},
+        "threshold": {"mode": thr.mode, "low": thr.low, "high": thr.high,
+                      "band_total_low": band_total[0], "band_total_high": band_total[1],
+                      "position": thr.position(total_now, E0),
+                      "crowd_if_lots": thr_cfg.get("crowd_if_lots") if thr.relative else None,
+                      "note": thr_cfg.get("relative_note" if thr.relative else "note")},
         "status": status,
         "recommended_mode": recommended,
         "horizon": {"start": horizon[0].isoformat(), "end": horizon[-1].isoformat(),
@@ -320,7 +334,7 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
                     "calendar_source": md.calendar_source},
         "contracts": contract_rows,
         "modes": [modes_out[k] for k in ("A", "D", "empty", "ts1") if k in modes_out],
-        "histogram": report.histogram(W_by_mode, low, high),
+        "histogram": report.histogram(W_by_mode, band_total[0], band_total[1]),
         "explanations": report.explanations(ctx),
         "limitations": report.limitations(ctx),
         "history_info": rinfo,

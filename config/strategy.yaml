@@ -4,8 +4,20 @@ competition:
   final_date: "2026-11-20"       # 初赛最后一个交易日，按当日收盘价平仓
   initial_total: 2000000         # 初始总金额（现货 100 万 + 期货 100 万）
 
-threshold:                       # 晋级线 τ ~ U[low, high]（Student-t 粗估，仅量级参考）
-  low: 2080000
+threshold:
+  # relative（当前）：现货人人相同、涨跌互相抵消，排名只看期货账户。
+  #   第 3000 名的期货盈利 = 基础值 ~ U[excess_low, excess_high] + 人群多头市值 × 沪深300 涨跌
+  #   人群平均持有多少手 IF 等值多单未知，对 crowd_if_lots 几档等权平均
+  # absolute（旧）：晋级线 = 总金额 ~ U[low, high]
+  mode: relative
+  excess_low: 0
+  excess_high: 60000
+  crowd_if_lots: [0, 0.5, 1, 2]
+  relative_note: >-
+    10-09 周榜：本人 204.3 万排第 1590 名（比不交易账户高 +3.2%）；用 9-18、9-30、10-09 三期前 100 名
+    与本人名次按 Student-t 拟合、差距按 √交易日 扩大，推算 11-20 第 3000 名约比不交易账户高 0%~+2.4%，
+    取期货盈利 0–6 万为区间。每周用新榜单校准。
+  low: 2080000                   # absolute 口径用（开赛时的粗估，已被 10-09 数据否定）
   high: 2160000
   note: 用前 100 名榜单两期数据按 Student-t（尺度 ∝ √交易日）粗估第 3000 名在 11-20 约 +4%~+8%，仅为量级参考
 

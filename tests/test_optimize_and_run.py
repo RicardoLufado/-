@@ -93,7 +93,7 @@ def test_latest_json_fields(synthetic_result, tmp_path):
     for mid, hm in r["histogram"]["modes"].items():
         assert len(hm["edges"]) == len(hm["freq"]) + 1
         assert sum(hm["freq"]) == pytest.approx(1.0, abs=1e-3)
-        assert hm["edges"][0] <= r["threshold"]["low"] and hm["edges"][-1] >= r["threshold"]["high"]
+        assert hm["edges"][0] <= r["threshold"]["band_total_low"] and hm["edges"][-1] >= r["threshold"]["band_total_high"]
 
     now = datetime(2026, 10, 9, 8, 45, tzinfo=BEIJING)
     out, cache = tmp_path / "site", tmp_path / "cache"

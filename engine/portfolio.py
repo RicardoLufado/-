@@ -83,17 +83,29 @@ def neg_variance_objective(W: np.ndarray) -> np.ndarray:
     return -np.var(np.asarray(W), axis=0)
 
 
-def metrics(sc: Scenario, n: np.ndarray, E0: float, liq_ratio: float, low: float, high: float) -> dict:
-    """单个组合的完整指标。"""
+def metrics(sc: Scenario, n: np.ndarray, E0: float, liq_ratio: float, low: float | None = None,
+            high: float | None = None, thr=None) -> dict:
+    """单个组合的完整指标。thr：engine.threshold.Threshold；不给时按总金额区间 [low, high]。"""
     n = np.asarray(n, dtype=float)
     r = evaluate(sc, n[None, :], E0, liq_ratio)
     W = r.W[:, 0]
     margin_used = float(np.abs(n) @ sc.margin0)
     q5, q50, q95 = np.percentile(W, [5, 50, 95])
+    if thr is not None:
+        prom = float(thr.prob(W, sc)[0])
+        above_low = float(thr.p_above(W, sc, thr.low)[0])
+        above_high = float(thr.p_above(W, sc, thr.high)[0])
+    else:
+        prom = float(ramp_objective(W[:, None], low, high)[0])
+        above_low, above_high = float(np.mean(W >= low)), float(np.mean(W >= high))
+    pnl = r.E_final[:, 0] - E0
     return {
-        "promotion_prob": float(ramp_objective(W[:, None], low, high)[0]),
-        "p_above_low": float(np.mean(W >= low)),
-        "p_above_high": float(np.mean(W >= high)),
+        "promotion_prob": prom,
+        "p_above_low": above_low,
+        "p_above_high": above_high,
+        "futures_pnl_p05": float(np.percentile(pnl, 5)),
+        "futures_pnl_p50": float(np.percentile(pnl, 50)),
+        "futures_pnl_p95": float(np.percentile(pnl, 95)),
         "liquidation_prob": float(np.mean(r.liquidated[:, 0])),
         "wipeout_prob": float(np.mean(r.wiped[:, 0])),
         "W_p05": float(q5),
