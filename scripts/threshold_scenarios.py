@@ -34,9 +34,9 @@ def rel_prob(pnl: np.ndarray, r_csi: np.ndarray, nc: float, lo: float, hi: float
     return np.clip((pnl - nc * r_csi[:, None] - lo) / (hi - lo), 0.0, 1.0).mean(axis=0)
 
 
-def make_objective(nc: float, lo: float, hi: float, i_if: int):
+def make_objective(nc: float, lo: float, hi: float, i_if: int, realized_log: float = 0.0):
     def obj(W, sc):
-        r = np.exp(sc.extra["cum_H"][:, i_if]) - 1.0
+        r = np.exp(realized_log + sc.extra["cum_H"][:, i_if]) - 1.0
         pnl = W - sc.spot[:, -1][:, None] - INITIAL_FUTURES
         return rel_prob(pnl, r, nc, lo, hi)
     obj.needs_scenario = True
@@ -56,17 +56,19 @@ def main() -> int:
         md = synthetic_market_data(spec, end=datetime(2026, 10, 9).date())
         print("!! 合成数据，仅测试脚本，数字没有市场含义")
     else:
-        md = fetch_market_data(spec, strategy, CACHE_DIR, log=lambda *_: None, with_spot=False)
+        md = fetch_market_data(spec, strategy, CACHE_DIR, log=lambda *_: None)   # 带实时价：盘中以现在为起点
     keep: dict = {}
     build(spec, strategy, account, md, now, robustness=False, keep=keep)
     sc, sc_screen = keep["sc_final"], keep["sc_screen"]
     products, kinds, E0 = keep["products"], keep["kinds"], keep["E0"]
     i_if, i_im = products.index("IF"), products.index("IM")
     if_lot = float(sc.F0[i_if] * spec.by_product("IF").multiplier)
-    r_csi = np.exp(sc.extra["cum_H"][:, i_if]) - 1.0
+    realized = keep["thr"].realized_log          # 沪深300 自校准日收盘到起点已实现的涨跌（人群多单已实现的盈亏）
+    r_csi = np.exp(realized + sc.extra["cum_H"][:, i_if]) - 1.0
     liq = float(strategy["risk"]["liq_ratio"])
 
-    print(f"数据截至 {keep['t0']}，剩余 {len(keep['horizon'])} 个交易日，{sc.n_paths} 条路径")
+    print(f"日线截至 {keep['t0']}，起点 {keep['start']}，剩余 {len(keep['horizon'])} 个交易日，{sc.n_paths} 条路径；"
+          f"沪深300 自校准日 {strategy['threshold'].get('anchor_date')} 已实现 {np.expm1(realized):+.2%}")
     print(f"当前期货权益 {E0:,.2f}（期货盈利 {E0 - INITIAL_FUTURES:+,.0f}），1 手 IF 市值 {if_lot:,.0f}")
     print(f"沪深300 到 11-20 涨跌幅（模型）：5%/50%/95% 分位 = "
           f"{np.percentile(r_csi, 5):+.1%} / {np.percentile(r_csi, 50):+.1%} / {np.percentile(r_csi, 95):+.1%}")
@@ -135,7 +137,7 @@ def main() -> int:
     print("\n=== 模型在相对口径下的最优手数（基准 0–6 万）===")
     lo, hi = BANDS["基准 0–6 万"]
     for cname, nc in crowd.items():
-        r = search(sc_screen, sc, kinds, E0, strategy, make_objective(nc, lo, hi, i_if),
+        r = search(sc_screen, sc, kinds, E0, strategy, make_objective(nc, lo, hi, i_if, realized),
                    log=lambda *_: None, label=cname)
         print(f"{cname:<10} | 最优 {lots_text(r.n, products):<20} | 晋级概率 {r.score:.1%}")
     return 0

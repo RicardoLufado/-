@@ -219,6 +219,8 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
     if anchor and anchor > t0:          # 校准日的收盘还没进日线（例如当晚刚录入周榜）：视为没走
         realized = 0.0
     thr = threshold_from_config(thr_cfg, products, if_lot, realized)
+    if keep is not None:
+        keep.update(thr=thr)
     if thr.relative:
         band_total = (sp["total"] + INITIAL_FUTURES + thr.eff_low, sp["total"] + INITIAL_FUTURES + thr.eff_high)
         log(f"晋级线（相对口径）：期货盈利 {thr.eff_low:+,.0f} ~ {thr.eff_high:+,.0f}"
