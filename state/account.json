@@ -1,8 +1,17 @@
 {
-  "updated_at": "2026-10-09",
-  "futures_equity": 1063984.58,
+  "updated_at": "2026-10-12",
+  "futures_equity": 1002184.58,
+  "mark_prices": {
+    "IM2612": 6918.4
+  },
+  "equity_note": "10-12 13:57 App 录屏：权益 1,002,184.58，IM2612 现价 6918.4（盘中）",
   "positions": [
-    {"code": "IM2612", "side": "long", "lots": 3, "avg_price": 6914.6}
+    {
+      "code": "IM2612",
+      "side": "long",
+      "lots": 3,
+      "avg_price": 6914.6
+    }
   ],
   "spot_value": 979239.06,
   "spot_value_asof": "2026-10-09",
