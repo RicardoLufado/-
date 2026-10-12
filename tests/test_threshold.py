@@ -38,6 +38,20 @@ def test_crowd_beta_moves_the_line():
     assert both.prob(W, sc)[0] == pytest.approx((1.0 + expected) / 2)
 
 
+def test_realized_index_move_since_anchor_shifts_the_line():
+    """校准日以来大盘已经跌了 2%：人群多单已经亏了，晋级线下移；模拟部分为 0 时概率按平移后的线算。"""
+    sc = scenario_with([980_000] * 3, [0.0, 0.0, 0.0])
+    W = 980_000 + INITIAL_FUTURES + np.full(3, 10_000.0)                 # 期货盈利 1 万
+    thr = Threshold("relative", 0.0, 60_000.0, [1_000_000.0], i_if=0, realized_log=float(np.log(0.98)))
+    assert thr.shift == pytest.approx(-20_000.0)
+    assert (thr.eff_low, thr.eff_high) == pytest.approx((-20_000.0, 40_000.0))
+    assert thr.prob(W, sc)[0] == pytest.approx(0.5)                     # (1 万 + 2 万) / 6 万
+    assert thr.status(0.0, INITIAL_FUTURES + 10_000.0) == "持平"
+    assert Threshold("relative", 0.0, 60_000.0, [1_000_000.0], i_if=0).status(0.0, INITIAL_FUTURES + 10_000.0) == "持平"
+    assert thr.status(0.0, INITIAL_FUTURES - 10_000.0) == "持平"        # 不平移时这里是「追赶」
+    assert Threshold("relative", 0.0, 60_000.0, [1_000_000.0], i_if=0).status(0.0, INITIAL_FUTURES - 10_000.0) == "追赶"
+
+
 def test_status_and_position():
     thr = Threshold("relative", 0.0, 60_000.0, [0.0], i_if=0)
     assert thr.status(total_now=0, E0=INITIAL_FUTURES - 1) == "追赶"

@@ -64,6 +64,10 @@
     var spot = get(d, "account.spot") || {};
     var html = "";
     html += row("数据截至", d.data_asof ? esc(d.data_asof) + " 收盘" : MISSING);
+    if (d.start && d.start.intraday) {
+      html += row("计算起点", esc(String(d.start.date).slice(5)) + " 盘中实时价" +
+        (isNum(d.start.index_move_today) ? '<br><span class="muted small">沪深300 今天约 ' + (d.start.index_move_today >= 0 ? "+" : "") + (d.start.index_move_today * 100).toFixed(2) + "%（按 IF2612 估计）</span>" : ""));
+    }
     html += row("计算时间（北京）", d.generated_at ? esc(bjTime(d.generated_at)) + ' · <span class="' + (a.stale ? "bad" : "good") + '">' + a.text + "</span>" : MISSING);
     html += row("当前总金额", '<span class="big num">' + money(get(d, "account.total")) + "</span>");
     html += row("　现货（模型估计）", '<span class="num">' + money(spot.value) + "</span>" +
@@ -77,7 +81,12 @@
     html += row(acc.futures_equity_estimated ? "　期货权益（模型估计）" : "　期货权益",
       '<span class="num">' + money(acc.futures_equity) + '</span><br><span class="muted small">' + eqNote + "</span>");
     if (thr.mode === "relative") {
-      html += row("晋级线（估计）", "期货盈利 " + wan(thr.low, 0) + " – " + wan(thr.high, 0) +
+      var moved = isNum(thr.shift) && Math.abs(thr.shift) >= 500
+        ? '<br><span class="muted small">周榜推算 ' + wan(thr.base_low, 0) + " – " + wan(thr.base_high, 0) + "，" +
+          esc(String(thr.anchor_date || "").slice(5)) + " 以来大盘 " + (thr.index_move_since_anchor >= 0 ? "+" : "") +
+          (thr.index_move_since_anchor * 100).toFixed(2) + "%，线" + (thr.shift > 0 ? "上移 " : "下移 ") + wan(Math.abs(thr.shift)) + "</span>"
+        : "";
+      html += row("晋级线（估计）", "期货盈利 " + wan(thr.low, 0) + " – " + wan(thr.high, 0) + moved +
         '<br><span class="muted small">≈ 总金额 ' + wan(thr.band_total_low) + " – " + wan(thr.band_total_high) + "（按当前现货）</span>");
       html += row("你的期货盈利", '<span class="num">' + (isNum(thr.position) ? (thr.position >= 0 ? "+" : "") + money(thr.position) : MISSING) + "</span>");
     } else {

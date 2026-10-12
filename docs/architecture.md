@@ -17,7 +17,7 @@
 │   ├ engine.data      AKShare(新浪) 抓数，重试/超时/缓存回退 → MarketData   │
 │   ├ engine.model     对数收益 → EWMA 残差 → 块自助法路径 → Scenario 张量  │
 │   ├ engine.spot      现货估值（ETF + 债券）                                │
-│   ├ engine.equity    期货权益按收盘价盯市                                  │
+│   ├ engine.equity    期货权益盯市（收盘价 / 盘中实时价）                   │
 │   ├ engine.threshold 晋级线与晋级概率（relative / absolute）               │
 │   ├ engine.optimize  整数手数搜索（模式 A / D）                            │
 │   ├ engine.portfolio 组合评估（权益路径、爆仓、穿仓、止损）                │
@@ -38,13 +38,13 @@
 |---|---|
 | `config/contracts.yaml` | 8 个 2612 合约的参数：乘数、最小变动、保证金率、手续费、历史序列代码、App 名称；每项注明来源 |
 | `config/strategy.yaml` | 晋级线（`threshold`）、数据参数、模型参数、风险约束、搜索参数、站点参数 |
-| `state/account.json` | 用户账户：期货权益（`updated_at` 收盘后）、持仓、现货市值、报名日期 |
+| `state/account.json` | 用户账户：期货权益（`updated_at` 当天；盘中抄的附 `mark_prices`）、持仓、现货市值、报名日期 |
 | `state/leaderboard.json` | 历次周榜（前 100 名）与本人名次快照，用于校准晋级线 |
 | `engine/config.py` | 读取以上配置；`Contract`（单手保证金、手续费、按最小变动取整）；北京时间工具 |
 | `engine/data.py` | `Fetcher`：每个请求重试 3 次、超时 20 秒、间隔 1 秒，成功写缓存，失败读缓存；`fetch_market_data()` 拉交易日历、8 个历史序列、8 个 2612 日线和盘中价；回退日历 |
 | `engine/model.py` | `build_returns()` 取日期交集、国债离群点剔除；`ewma_filter()`；`simulate_log_returns()` 块自助法；`build_scenario()` 生成 `Scenario`（价格、单手盈亏、单手保证金、现货路径、期末累计收益） |
 | `engine/spot.py` | 现货估值：ETF 按沪深300 涨跌，债券按 T/TF 主连平均收益滚动 |
-| `engine/equity.py` | `mark_to_market()`：期货权益 = 报告值 + 持仓按 2612 收盘价从 `updated_at` 盯市到 t0 |
+| `engine/equity.py` | `mark_to_market()`：期货权益 = 报告值 + 持仓从参照价（`mark_prices` 或 `updated_at` 收盘）盯市到当前价（盘中用实时价，否则 t0 收盘） |
 | `engine/threshold.py` | `Threshold`：晋级线与晋级概率（relative：只比期货盈亏，人群 β 取平均；absolute：总金额区间）；`VarianceObjective`（模式 D） |
 | `engine/portfolio.py` | `evaluate()`：手数矩阵 × 张量 → 期货权益路径，按天检查爆仓 / 穿仓 / 止损线；`metrics()` 汇总单个方案的指标 |
 | `engine/optimize.py` | `enumerate_candidates()` → `score()`（含简洁规则扣分）→ `search()`：2000 条路径初筛，前 30 名换 10000 条复评，再做 ±1 手坐标下降 |
@@ -68,17 +68,22 @@
    - 股指历史用**指数**：沪深300、上证50、中证500、中证1000（`stock_zh_index_daily`）；
    - 国债历史用新浪**主连**：TS0/TF0/T0/TL0（`futures_main_sina`）；
    - 2612 合约日线：`futures_zh_daily_sina`；
-   - 盘中价：`futures_zh_spot`，只用于展示和参考价。
+   - 盘中价：`futures_zh_spot`，用于参考价；盘中运行时也作为计算起点（见第 4.1 步）。
    - 失败的接口读缓存并写进 warnings；关键序列（沪深300、T/TF）缺失就让引擎报错，交给 fallback。
 3. **收益与波动**：2023-05 以来 8 个序列取日期交集，算对数收益，剔除国债换月跳空，EWMA（λ=0.94）标准化并去均值。
 4. **t0 定价**：t0 = 历史交集的最后一天；F0 = 2612 在 t0 的收盘价；基差 b0 = F0 / 指数 − 1。
+   - 4.1 **盘中起点**（ADR-010）：今天是交易日、已过 09:30、日线还停在 t0、且有 IF2612 实时价时，
+     起点改为「现在」：F0 换成实时价，指数按同一涨跌幅平移（基差率不变），现货 ETF 同样平移，
+     今天视为已过去，情景从下一个交易日开始。
 5. **账户**：现货估值（`spot`）+ 期货权益盯市（`equity`）→ 当前总金额。
-6. **情景**：路径覆盖 (t0, 11-20] 的每个交易日。
+6. **情景**：路径覆盖 (起点, 11-20] 的每个交易日（起点 = t0，盘中运行时 = 今天）。
    - 股指 2612：F = 指数 × (1 + b0 × 剩余交易日 ÷ 当前剩余交易日)，即基差线性收敛；
    - 国债 2612：按主连收益滚动。
    - 生成单手盈亏、单手保证金、现货路径和期末累计收益张量。初筛 2000 条路径，终评 10000 条，固定种子。
 7. **晋级线**（`threshold.from_config`）：
-   - relative：你的期货盈利 ≥ c0 + Nc × 沪深300 涨跌，c0 ~ U[excess_low, excess_high]，对各档 Nc 取平均；
+   - relative：你的期货盈利 ≥ c0 + Nc × 沪深300 自校准日（`anchor_date`）收盘起的涨跌，c0 ~ U[excess_low, excess_high]，
+     对各档 Nc 取平均。涨跌 = 校准日到起点已实现的部分 + 起点到期末的模拟部分（ADR-010）；
+     页面上的区间 `low/high` 是按已实现部分平移后的值；
    - absolute：总金额 ≥ τ，τ ~ U[low, high]。
 8. **搜索**：
    - 模式 A：晋级概率最大，减去简洁规则扣分；
@@ -98,18 +103,21 @@
  "registration_date": "YYYY-MM-DD", "spot_cost_date": "YYYY-MM-DD"}
 ```
 
-- `futures_equity` 视为 `updated_at` 当天收盘后 App 显示的值。
+- `futures_equity` 视为 `updated_at` 当天 App 显示的值：没有 `mark_prices` 视为收盘后抄的；
+  盘中抄的要同时写 `"mark_prices": {"IM2612": 6918.4}`（抄权益时 App 持仓页的「现价」），引擎从这个价格盯市。
+- `equity_note` 可选，只是备注（数据来源）。
 - `positions` 只能写模型里有的 2612 合约，其他合约会被下单指令要求平仓。
 
 **`site/data/latest.json`** 的顶层字段（`site/app.js` 和 `scripts/summarize.py` 依赖它，改结构必须三处一起改）：
 
 | 字段 | 内容 |
 |---|---|
-| `generated_at`、`data_asof`、`market_status` | 计算时间、数据截至日期、交易日 / 休市 |
+| `generated_at`、`data_asof`、`market_status` | 计算时间、日线截至日期、交易日 / 休市 |
+| `start` | 计算起点：`date`、`intraday`（是否盘中起点）、`index_move_today`、`note` |
 | `synthetic`、`fallback` | 是否合成数据、是否兜底结果 |
 | `data_sources[]` | 每个数据源：status、rows、日期范围、抓取时间 |
 | `account` | 总金额、现货拆分、期货权益（报告值 / 估算值 / 盯市明细）、持仓 |
-| `threshold` | `mode`、`low`、`high`（与 mode 同单位）、`band_total_low/high`（按当前现货折算的总金额）、`position`、`crowd_if_lots`、`note` |
+| `threshold` | `mode`、`low`、`high`（与 mode 同单位，relative 下已按校准日以来大盘涨跌平移）、`base_low/base_high`（周榜推算的原区间）、`shift`、`anchor_date`、`index_move_since_anchor`、`band_total_low/high`（按当前现货折算的总金额）、`position`、`crowd_if_lots`、`note` |
 | `status`、`recommended_mode` | 追赶 / 持平 / 锁定；推荐的模式 |
 | `horizon` | 剩余交易日、D0、日历来源 |
 | `contracts[]` | 每个合约：t0 收盘、参考价（注明来源和时间）、单手保证金、基差、年化波动 |

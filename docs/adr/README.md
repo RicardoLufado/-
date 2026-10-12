@@ -15,6 +15,7 @@ Context / Options Considered / Decision / Why / Consequences。
 | [ADR-007](ADR-007-schedule-shanghai-time-redundant-slots.md) | 定时按上海时间写，开盘前和晚上各 3 个时间点 | Accepted |
 | [ADR-008](ADR-008-relative-threshold-stable-qualification.md) | 目标改为稳过前 3000 名，晋级线改用相对口径 | Accepted（Supersedes ADR-004 部分） |
 | [ADR-009](ADR-009-leg-penalty-simplicity-rule.md) | 搜索加简洁规则，每多一个品种扣 0.3 个百分点 | Accepted |
+| [ADR-010](ADR-010-intraday-start-and-threshold-anchor.md) | 盘中运行以实时价为起点；晋级线人群项从校准日起算 | Accepted |
 
 新 ADR 模板：
 

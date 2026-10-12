@@ -67,6 +67,15 @@ def main(path: str = "site/data/latest.json") -> int:
         for a in acc.get("futures_equity_adjustments") or []:
             print(f"  盯市 {a['code']} {a['side']} {a['lots']} 手：{a['close_ref']}（{a['close_ref_date']}）→ "
                   f"{a['close_now']}（{a['close_now_date']}）= {a['pnl']:+,.0f}")
+    st = d.get("start") or {}
+    if st.get("intraday"):
+        print(f"起点：{st.get('note')}；沪深300 今天约 {st.get('index_move_today'):+.2%}（按 IF2612 估计）")
+    thr = d.get("threshold") or {}
+    if thr.get("mode") == "relative":
+        move = thr.get("index_move_since_anchor")
+        print(f"晋级线：期货盈利 {thr.get('low'):+,.0f} ~ {thr.get('high'):+,.0f}（周榜推算 {thr.get('base_low'):+,.0f} ~ "
+              f"{thr.get('base_high'):+,.0f}，{thr.get('anchor_date')} 以来沪深300 "
+              f"{(move if move is not None else 0):+.2%}，平移 {thr.get('shift') or 0:+,.0f}）；你的期货盈利 {thr.get('position'):+,.0f}")
     h = d.get("horizon") or {}
     if h:
         print(f"路径：{h.get('start')} ~ {h.get('end')}，{h.get('trading_days')} 个交易日，D0={h.get('D0')}，日历：{h.get('calendar_source')}")

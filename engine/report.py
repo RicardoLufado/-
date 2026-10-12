@@ -39,10 +39,16 @@ def explanations(ctx: dict) -> list[str]:
     if thr.relative:
         lead = ctx["E0"] - 1_000_000
         b_lo, b_hi = ctx["band_total"]
-        where = ("还在区间下方，差 " + wan(thr.low - lead)) if lead < thr.low else \
-                ("在区间之内，距上沿还差 " + wan(thr.high - lead)) if lead < thr.high else "已在区间上方"
+        lo, hi = thr.eff_low, thr.eff_high
+        where = ("还在区间下方，差 " + wan(lo - lead)) if lead < lo else \
+                ("在区间之内，距上沿还差 " + wan(hi - lead)) if lead < hi else "已在区间上方"
+        moved = ""
+        if abs(thr.shift) >= 500:
+            moved = (f"（周榜推算 {wan(thr.low)}–{wan(thr.high)}；校准日以来沪深300 "
+                     f"{np.expm1(thr.realized_log) * 100:+.2f}%，其他人多单跟着{'赚' if thr.shift > 0 else '亏'}，"
+                     f"晋级线平均{'上移' if thr.shift > 0 else '下移'} {wan(abs(thr.shift))}）")
         out.append(f"现货人人相同、涨跌不影响排名，名次只看期货账户。你的期货盈利 {lead:+,.0f}（总金额 {wan(total)}）；"
-                   f"按周榜推算，第 3000 名约为「不交易账户 + 期货盈利 {wan(thr.low)}–{wan(thr.high)}」"
+                   f"第 3000 名约为「不交易账户 + 期货盈利 {wan(lo)}–{wan(hi)}」{moved}"
                    f"（按当前现货约合总金额 {wan(b_lo)}–{wan(b_hi)}），你{where}；剩余 {H} 个交易日。")
     else:
         low, high = thr.low, thr.high

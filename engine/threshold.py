@@ -4,9 +4,10 @@
 - absolute：晋级线 = 总金额 τ ~ U[low, high]。晋级概率 = P(W ≥ τ)。
 - relative：现货人人相同、涨跌互相抵消，排名只看期货账户。
     你的期货盈利   PnL = 期末期货权益 − 1,000,000
-    第 3000 名的期货盈利 C = c0 + Nc × 沪深300 到期末的涨跌幅
-      c0 ~ U[excess_low, excess_high]（榜单推算的基础值）
+    第 3000 名的期货盈利 C = c0 + Nc × 沪深300 自校准日（anchor_date）收盘到期末的涨跌幅
+      c0 ~ U[excess_low, excess_high]（用 anchor_date 那期周榜推算的基础值）
       Nc = 人群平均持有的多头市值（未知；对几档假设等权平均）
+      涨跌幅 = 校准日到起点已实现的部分（realized_log）+ 起点到期末的模拟部分
     晋级概率 = 平均_Nc P(PnL ≥ C)
 """
 from __future__ import annotations
@@ -32,6 +33,7 @@ class Threshold:
     high: float
     crowd_notional: list[float] = field(default_factory=lambda: [0.0])
     i_if: int | None = None                     # 沪深300 在情景里的列（relative 用）
+    realized_log: float = 0.0                   # 沪深300 从校准日收盘到起点已实现的对数涨跌（relative 用）
 
     needs_scenario = True                       # 让 optimize.score 把情景一起传进来
 
@@ -46,7 +48,7 @@ class Threshold:
         if not self.relative:
             return W, None
         pnl = W - sc.spot[:, -1][:, None] - INITIAL_FUTURES
-        r = np.exp(sc.extra["cum_H"][:, self.i_if]) - 1.0
+        r = np.exp(self.realized_log + sc.extra["cum_H"][:, self.i_if]) - 1.0
         return pnl, r[:, None]
 
     def prob(self, W: np.ndarray, sc: Scenario) -> np.ndarray:
@@ -63,15 +65,30 @@ class Threshold:
             return (x >= level).mean(axis=0)
         return np.mean([((x - nc * r) >= level).mean(axis=0) for nc in self.crowd_notional], axis=0)
 
+    @property
+    def shift(self) -> float:
+        """校准日以来大盘涨跌让晋级线平均移动了多少（人群几档假设取平均）。"""
+        if not self.relative:
+            return 0.0
+        return float(np.mean(self.crowd_notional)) * (float(np.exp(self.realized_log)) - 1.0)
+
+    @property
+    def eff_low(self) -> float:
+        return self.low + self.shift
+
+    @property
+    def eff_high(self) -> float:
+        return self.high + self.shift
+
     def position(self, total_now: float, E0: float) -> float:
         """当前所在位置，和 low/high 同一单位。"""
         return E0 - INITIAL_FUTURES if self.relative else total_now
 
     def status(self, total_now: float, E0: float) -> str:
         x = self.position(total_now, E0)
-        if x < self.low:
+        if x < self.eff_low:
             return "追赶"
-        if x < self.high:
+        if x < self.eff_high:
             return "持平"
         return "锁定"
 
@@ -91,10 +108,12 @@ class VarianceObjective:
         return -np.var(W, axis=0)
 
 
-def from_config(cfg: dict, products: list[str], if_lot_value: float | None) -> Threshold:
+def from_config(cfg: dict, products: list[str], if_lot_value: float | None,
+                realized_log: float = 0.0) -> Threshold:
     mode = cfg.get("mode", "absolute")
     if mode == "relative":
         lots = [float(x) for x in cfg.get("crowd_if_lots", [0])]
         return Threshold("relative", float(cfg["excess_low"]), float(cfg["excess_high"]),
-                         [x * float(if_lot_value or 0.0) for x in lots], products.index("IF"))
+                         [x * float(if_lot_value or 0.0) for x in lots], products.index("IF"),
+                         float(realized_log))
     return Threshold("absolute", float(cfg["low"]), float(cfg["high"]))

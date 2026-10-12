@@ -129,28 +129,53 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
         if used != t0:
             warnings.append(f"{spec.by_product(p).code} 最近收盘日 {used} 早于历史数据日 {t0}，基差可能失真")
 
-    # ---- 日期 ----
+    # ---- 盘中：起点改为「现在」 ----
+    # 今天是交易日、已开盘、日线还停在 t0 时，用新浪实时价作为起点：2612 价格换成实时价，
+    # 指数按同一涨跌幅平移（基差率不变），今天视为已过去，情景从下一个交易日开始。
     cal = md.calendar
-    horizon = [d for d in cal if t0 < d <= final_date]
-    if not horizon:
-        raise RuntimeError(f"{t0} 之后到 {final_date} 没有交易日（比赛已结束？）")
-    D0 = count_trading_days_after(cal, t0, spec.equity_expiry)
-    D = np.array([count_trading_days_after(cal, d, spec.equity_expiry) for d in horizon])
     today = now.date()
+    quotes = {p: q["price"] for p, q in (md.spot_quotes or {}).items() if q and q.get("price")}
+    i_if = products.index("IF")
+    intraday = (today in set(cal) and today > t0 and (now.hour, now.minute) >= (9, 30)
+                and "IF" in quotes and np.isfinite(F0[i_if]))
+    start, live, idx_move = t0, None, 0.0
+    if intraday:
+        start, live = today, {}
+        for k, p in enumerate(products):
+            if p in quotes and np.isfinite(F0[k]) and F0[k] > 0:
+                m = math.log(quotes[p] / F0[k])
+                if kinds[k] == "equity":
+                    S0[k] = S0[k] * math.exp(m)
+                F0[k] = quotes[p]
+                live[p] = quotes[p]
+            elif np.isfinite(F0[k]):
+                warnings.append(f"{spec.by_product(p).code} 没有盘中价，起点仍用 {t0} 收盘价")
+        idx_move = math.log(S0[i_if] / float(md.closes["IF"][md.closes["IF"].index <= pd.Timestamp(t0)].iloc[-1]))
+        log(f"盘中运行：起点为 {today} 实时价；沪深300 按 IF2612 估计较 {t0} 收盘 {math.expm1(idx_move):+.2%}")
+
+    # ---- 日期 ----
+    horizon = [d for d in cal if start < d <= final_date]
+    if not horizon:
+        raise RuntimeError(f"{start} 之后到 {final_date} 没有交易日（比赛已结束？）")
+    D0 = count_trading_days_after(cal, start, spec.equity_expiry)
+    D = np.array([count_trading_days_after(cal, d, spec.equity_expiry) for d in horizon])
     market_status = "交易日" if today in set(cal) else "休市"
     lctd = last_completed_trading_day(cal, now)
-    if lctd and t0 < lctd and not md.synthetic:
+    if lctd and t0 < lctd and not md.synthetic and not intraday:
         warnings.append(f"数据截至 {t0}，不是最近一个已收盘交易日 {lctd}：数据源可能还没更新")
 
     # ---- 现货 ----
     bond_cols_names = [p for p in ("T", "TF") if p in md.closes]
     bond_ret = bond_roll_returns(md.closes, bond_cols_names, mad_k)
     sp = spot_value_at(account, md.closes["IF"], bond_ret, t0)
+    if intraday:            # 现货 ETF 跟沪深300：按盘中涨跌平移（相对口径下现货互相抵消，只影响显示）
+        sp["etf"] *= math.exp(idx_move)
+        sp["total"] = sp["etf"] + sp["bond"]
     if sp["csi300_cost_date"] != account["spot_cost_date"]:
         warnings.append(f"沪深300 在 {account['spot_cost_date']} 没有收盘价，用 {sp['csi300_cost_date']} 代替")
     if sp["asof_used"] != account["spot_value_asof"]:
         warnings.append(f"沪深300 在 {account['spot_value_asof']} 没有收盘价，用 {sp['asof_used']} 代替")
-    eq = mark_to_market(account, spec, md.contract_daily, t0)
+    eq = mark_to_market(account, spec, md.contract_daily, t0, live=live, today=today)
     warnings.extend(eq["warnings"])
     E0 = float(eq["estimate"])
     total_now = sp["total"] + E0
@@ -176,18 +201,30 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
     sc_final = build_scenario(mi, paths_final, seed + 1)
     if keep is not None:
         keep.update(mi=mi, sc_screen=sc_screen, sc_final=sc_final, products=products, kinds=kinds,
-                    E0=E0, total_now=total_now, spot=sp, t0=t0, horizon=horizon)
+                    E0=E0, total_now=total_now, spot=sp, t0=t0, start=start, horizon=horizon)
     log(f"情景：{len(horizon)} 个交易日（{horizon[0]} ~ {horizon[-1]}），D0={D0}，"
         f"初筛 {paths_screen} 条 / 终评 {paths_final} 条路径")
 
     liq = float(risk["liq_ratio"])
-    i_if = products.index("IF")
     if_lot = float(sc_final.F0[i_if] * spec.by_product("IF").multiplier)
-    thr = threshold_from_config(thr_cfg, products, if_lot)
+    # 人群项：沪深300 从校准日收盘到起点已经走了多少（校准日缺省时只算 t0 → 起点的盘中部分）
+    anchor = to_date(thr_cfg["anchor_date"]) if thr_cfg.get("anchor_date") else None
+    csi = md.closes["IF"]
+    realized = idx_move
+    if anchor and anchor < t0:
+        a = csi[csi.index <= pd.Timestamp(anchor)]
+        if len(a):
+            s_t0 = float(csi[csi.index <= pd.Timestamp(t0)].iloc[-1])
+            realized += math.log(s_t0 / float(a.iloc[-1]))
+    if anchor and anchor > t0:          # 校准日的收盘还没进日线（例如当晚刚录入周榜）：视为没走
+        realized = 0.0
+    thr = threshold_from_config(thr_cfg, products, if_lot, realized)
     if thr.relative:
-        band_total = (sp["total"] + INITIAL_FUTURES + thr.low, sp["total"] + INITIAL_FUTURES + thr.high)
-        log(f"晋级线（相对口径）：期货盈利 {thr.low:+,.0f} ~ {thr.high:+,.0f}，按当前现货约合总金额 "
-            f"{band_total[0]:,.0f} ~ {band_total[1]:,.0f}；人群多头 {thr_cfg.get('crowd_if_lots')} 手 IF 等权")
+        band_total = (sp["total"] + INITIAL_FUTURES + thr.eff_low, sp["total"] + INITIAL_FUTURES + thr.eff_high)
+        log(f"晋级线（相对口径）：期货盈利 {thr.eff_low:+,.0f} ~ {thr.eff_high:+,.0f}"
+            f"（基础 {thr.low:+,.0f} ~ {thr.high:+,.0f}，沪深300 自 {anchor} 收盘 {math.expm1(realized):+.2%}，"
+            f"平移 {thr.shift:+,.0f}），按当前现货约合总金额 {band_total[0]:,.0f} ~ {band_total[1]:,.0f}；"
+            f"人群多头 {thr_cfg.get('crowd_if_lots')} 手 IF 等权")
     else:
         band_total = (thr.low, thr.high)
     resA = search(sc_screen, sc_final, kinds, E0, strategy, thr, log, "模式 A")
@@ -306,6 +343,10 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
         "schema": 1,
         "generated_at": now.isoformat(timespec="seconds"),
         "data_asof": t0.isoformat(),
+        "start": {"date": start.isoformat(), "intraday": bool(intraday),
+                  "index_move_today": math.expm1(idx_move) if intraday else None,
+                  "note": (f"盘中运行：起点为 {start} 新浪实时价，情景从下一个交易日开始" if intraday
+                           else f"起点为 {t0} 收盘")},
         "market_status": market_status,
         "synthetic": md.synthetic,
         "data_sources": [s.to_dict() for s in md.sources],
@@ -323,7 +364,10 @@ def build(spec: ContractSpec, strategy: dict, account: dict, md: MarketData, now
                      "method": "模型估计：ETF 按沪深300涨跌、债券按 T/TF 主连平均收益滚动"},
             "total": total_now,
         },
-        "threshold": {"mode": thr.mode, "low": thr.low, "high": thr.high,
+        "threshold": {"mode": thr.mode, "low": thr.eff_low, "high": thr.eff_high,
+                      "base_low": thr.low, "base_high": thr.high, "shift": thr.shift,
+                      "anchor_date": anchor.isoformat() if thr.relative and anchor else None,
+                      "index_move_since_anchor": math.expm1(thr.realized_log) if thr.relative else None,
                       "band_total_low": band_total[0], "band_total_high": band_total[1],
                       "position": thr.position(total_now, E0),
                       "crowd_if_lots": thr_cfg.get("crowd_if_lots") if thr.relative else None,

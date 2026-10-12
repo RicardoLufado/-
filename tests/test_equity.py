@@ -59,6 +59,25 @@ def test_weekend_update_uses_previous_close(spec):
     assert out["estimate"] == pytest.approx(1_000_000 + (6950.0 - 6900.0) * 200)
 
 
+def test_intraday_mark_price_and_live_quote(spec):
+    """盘中抄的权益（带 mark_prices）→ 按实时价盯市；收盘后按当天收盘盯市。"""
+    pos = [{"code": "IM2612", "side": "long", "lots": 3, "avg_price": 6914.6}]
+    a = dict(acc(pos, updated="2026-10-12", eq=1_002_184.58), mark_prices={"IM2612": 6918.4})
+    live = mark_to_market(a, spec, DAILY, date(2026, 10, 9), live={"IM": 6930.0}, today=date(2026, 10, 12))
+    assert live["estimated"] and live["estimate"] == pytest.approx(1_002_184.58 + 3 * (6930.0 - 6918.4) * 200)
+    close = mark_to_market(a, spec, DAILY, date(2026, 10, 12))
+    assert close["estimate"] == pytest.approx(1_002_184.58 + 3 * (6950.0 - 6918.4) * 200)
+
+
+def test_same_day_without_mark_price_or_stale_data_keeps_reported(spec):
+    pos = [{"code": "IM2612", "side": "long", "lots": 3, "avg_price": 6914.6}]
+    a = acc(pos, updated="2026-10-12")
+    out = mark_to_market(a, spec, DAILY, date(2026, 10, 9), live={"IM": 6930.0}, today=date(2026, 10, 12))
+    assert out["estimate"] == 1_000_000 and not out["estimated"]          # 不知道抄权益时的价格，不盯市
+    stale = mark_to_market(a, spec, DAILY, date(2026, 10, 9))
+    assert stale["estimate"] == 1_000_000 and stale["warnings"]            # 行情比账户旧：不倒推
+
+
 def test_unknown_contract_warns(spec):
     pos = [{"code": "IF2610", "side": "long", "lots": 1, "avg_price": 4200.0}]
     out = mark_to_market(acc(pos), spec, DAILY, date(2026, 10, 12))
@@ -78,3 +97,33 @@ def test_engine_uses_estimated_equity(spec):
     assert res["account"]["futures_equity"] == pytest.approx(expected)
     assert res["account"]["futures_equity_reported"] == 1_000_000
     assert res["account"]["total"] == pytest.approx(res["account"]["spot"]["value"] + expected)
+
+
+def test_engine_intraday_start(spec):
+    """盘中运行：起点换成实时价，情景从下一个交易日开始，权益按实时价盯市。"""
+    md = synthetic_market_data(spec, end=date(2026, 10, 9))
+    closes = {p: float(d["close"].iloc[-1]) for p, d in md.contract_daily.items()}
+    md.spot_quotes = {p: {"price": round(v * 0.99, 1), "time": "14:00:00"} for p, v in closes.items()}
+    account = dict(base_account(), updated_at="2026-10-12", futures_equity=1_000_000.0,
+                   positions=[{"code": "IM2612", "side": "long", "lots": 1, "avg_price": 7000.0}],
+                   mark_prices={"IM2612": closes["IM"]})
+    res = build(spec, load_strategy(), account, md, datetime(2026, 10, 12, 14, 0, tzinfo=BEIJING),
+                paths_screen=200, paths_final=500, robustness=False)
+    assert res["start"]["intraday"] and res["start"]["date"] == "2026-10-12"
+    assert res["horizon"]["start"] == "2026-10-13"
+    assert res["start"]["index_move_today"] == pytest.approx(md.spot_quotes["IF"]["price"] / closes["IF"] - 1)
+    im = next(c for c in res["contracts"] if c["product"] == "IM")
+    assert im["F0"] == pytest.approx(md.spot_quotes["IM"]["price"])
+    s_t0 = float(md.closes["IM"][md.closes["IM"].index <= pd.Timestamp("2026-10-09")].iloc[-1])
+    assert im["basis"] == pytest.approx(closes["IM"] / s_t0 - 1, rel=1e-9)          # 基差率不变
+    expected = 1_000_000 + (md.spot_quotes["IM"]["price"] - closes["IM"]) * 200
+    assert res["account"]["futures_equity"] == pytest.approx(expected)
+    assert not any("不是最近一个已收盘交易日" in w for w in res["warnings"])
+
+
+def test_engine_before_open_is_not_intraday(spec):
+    md = synthetic_market_data(spec, end=date(2026, 10, 9))
+    md.spot_quotes = {p: {"price": float(d["close"].iloc[-1]), "time": ""} for p, d in md.contract_daily.items()}
+    res = build(spec, load_strategy(), base_account(), md, datetime(2026, 10, 12, 8, 45, tzinfo=BEIJING),
+                paths_screen=200, paths_final=500, robustness=False)
+    assert not res["start"]["intraday"] and res["horizon"]["start"] == "2026-10-12"
