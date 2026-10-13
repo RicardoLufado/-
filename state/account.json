@@ -1,10 +1,10 @@
 {
   "updated_at": "2026-10-12",
-  "futures_equity": 1002184.58,
+  "futures_equity": 998224.58,
   "mark_prices": {
-    "IM2612": 6918.4
+    "IM2612": 6911.8
   },
-  "equity_note": "10-12 13:57 App 录屏：权益 1,002,184.58，IM2612 现价 6918.4（盘中）",
+  "equity_note": "10-13 09:19 App 录屏：10-12 结算后期货权益 998,224.58（IM2612 结算价 6911.8），现货市值 976,617.49，总金额 1,974,842.07",
   "positions": [
     {
       "code": "IM2612",
@@ -13,8 +13,8 @@
       "avg_price": 6914.6
     }
   ],
-  "spot_value": 979239.06,
-  "spot_value_asof": "2026-10-09",
+  "spot_value": 976617.49,
+  "spot_value_asof": "2026-10-12",
   "registration_date": "2026-09-20",
   "spot_cost_date": "2026-09-18"
 }
