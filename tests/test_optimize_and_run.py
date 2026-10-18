@@ -59,7 +59,7 @@ def test_search_respects_margin_cap_and_beats_empty():
                 paths_screen=300, paths_final=1500, robustness=False)
     A = next(m for m in res["modes"] if m["id"] == "A")
     E = next(m for m in res["modes"] if m["id"] == "empty")
-    assert A["metrics"]["margin_ratio"] <= 0.70 + 1e-9
+    assert A["metrics"]["margin_ratio"] <= float(strategy["risk"]["margin_cap"]) + 1e-9
     assert A["metrics"]["promotion_prob"] >= E["metrics"]["promotion_prob"]
     D = next(m for m in res["modes"] if m["id"] == "D")
     assert D["metrics"]["W_std"] <= E["metrics"]["W_std"] + 1e-6

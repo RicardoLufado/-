@@ -38,7 +38,7 @@ model:
   robustness_seeds: [101, 202, 303]   # 换 3 个种子重算最优解
 
 risk:
-  margin_cap: 0.70               # 开仓保证金 ≤ 70% × 期货权益
+  margin_cap: 0.80               # 开仓保证金 ≤ 80% × 期货权益（10-18 用户要求从 70% 放宽，ADR-011）
   liq_ratio: 1.0                 # 权益 < 保证金 × liq_ratio 视为爆仓（当天收盘全部平仓，此后权益冻结）
 
 search:

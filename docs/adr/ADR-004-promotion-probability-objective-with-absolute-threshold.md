@@ -1,6 +1,6 @@
 # ADR-004：目标函数用晋级概率，晋级线用总金额区间 τ ~ U[208 万, 216 万]
 
-- Status: Superseded by ADR-008（晋级线口径部分；「目标函数 = 晋级概率」和整数搜索方法仍然有效）
+- Status: Superseded by ADR-008（晋级线口径部分；「目标函数 = 晋级概率」和整数搜索方法仍然有效）；Superseded by ADR-011（70% 保证金上限部分）
 - Date: 2026-10-08
 
 ## Context
